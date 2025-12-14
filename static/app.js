@@ -79,7 +79,7 @@ function tagToRu(tag){
   const map = {
     charge:'заряд', poison:'яд', burn:'ожог', bleed:'кровоток', control:'контроль',
     stun:'оглуш', freeze:'заморозка', burst:'взрыв', discard:'сброс', crit:'крит',
-    block:'блок', mana:'мана', execute:'казнь'
+    block:'блок', mana:'мана', execute:'казнь', heal:'исцеление'
   };
   return map[tag] || tag;
 }
@@ -97,6 +97,7 @@ const TAG_INFO = {
   crit: {title:'Крит', desc:'Повышенный шанс/урон критических ударов.'},
   block: {title:'Блок', desc:'Защита и удержание здоровья.'},
   mana: {title:'Мана', desc:'Генерация и экономия маны/энергии.'},
+  heal: {title:'Исцеление', desc:'Поддержание здоровья и регенерация в бою.'},
   execute: {title:'Казнь', desc:'Эффекты добивания слабых целей.'},
 };
 
@@ -118,6 +119,7 @@ function describeEffect(eff){
   if(op === 'aoe_damage') return `Урон всем: ${eff.amount ?? 0}`;
   if(op === 'block') return `Блок: ${eff.amount ?? 0}`;
   if(op === 'heal') return `Лечение: ${eff.amount ?? 0}`;
+  if(op === 'heal_per_enemy') return `Лечение за врага: ${eff.amount ?? 0}`;
   if(op === 'draw') return `Добор: ${eff.n ?? 0}`;
   if(op === 'gain_mana') return `+${eff.n ?? 0} маны`;
   if(op === 'discard_choose') return `Сброс по выбору: ${eff.n ?? 0}`;
