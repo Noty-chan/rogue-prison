@@ -104,8 +104,31 @@
     <div id="overlayDeck" class="overlay hidden">
       <div class="panel wide">
         <h2>Колода</h2>
-        <div class="row">
+        <div class="row wrap">
           <div class="chip" id="deckCount">0 карт</div>
+          <select id="deckFilterRarity" class="input">
+            <option value="">Все редкости</option>
+            <option value="common">Обычная</option>
+            <option value="uncommon">Необычная</option>
+            <option value="rare">Редкая</option>
+            <option value="legendary">Легендарная</option>
+          </select>
+          <select id="deckFilterType" class="input">
+            <option value="">Все типы</option>
+            <option value="attack">Атака</option>
+            <option value="defense">Защита</option>
+            <option value="skill">Навык</option>
+            <option value="upgrade">Апгрейд</option>
+          </select>
+          <select id="deckFilterTag" class="input">
+            <option value="">Все теги</option>
+          </select>
+          <select id="deckSort" class="input">
+            <option value="default">Сортировка: по порядку колоды</option>
+            <option value="rarity">Сортировка: редкость → тип → имя</option>
+            <option value="type">Сортировка: тип → стоимость → имя</option>
+            <option value="cost">Сортировка: стоимость → имя</option>
+          </select>
           <div class="spacer"></div>
           <button class="btn" id="btnCloseDeck">Закрыть</button>
         </div>
@@ -120,6 +143,12 @@
         <p class="muted">Выбери путь. Тюрьма выбрала тебя давно.</p>
       </div>
       <div id="mapProgress" class="mapProgress"></div>
+      <div id="mapGraph" class="mapGraph">
+        <svg id="mapLinks" class="mapLinks" aria-hidden="true"></svg>
+        <div id="mapColumns" class="mapColumns"></div>
+      </div>
+      <div class="hr"></div>
+      <p class="tiny muted">Доступные узлы (для мобильных устройств можно тапать здесь):</p>
       <div id="roomChoices" class="roomChoices"></div>
     </section>
 
