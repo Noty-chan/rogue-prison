@@ -5,6 +5,7 @@ let SID = null;
 let STATE = null;
 let CONTENT = null; // /api/content
 let CARD_INDEX = new Map(); // id -> {base, up}
+let MAP_ZOOM = 1;
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -315,6 +316,12 @@ function renderMap(){
   const reachable = new Set((run?.room_choices || []).map(r=>r.id));
   const current = run?.current_node;
   const mapData = run?.path_map;
+  const graph = $('#mapGraph');
+  const canvas = $('#mapCanvas');
+  const zoomInput = $('#mapZoom');
+  const zoomLabel = $('#mapZoomLabel');
+  if(zoomInput) zoomInput.value = String(MAP_ZOOM);
+  if(zoomLabel) zoomLabel.textContent = `${Math.round(MAP_ZOOM*100)}%`;
   const prog = $('#mapProgress');
   prog.innerHTML = '';
   for(let f=1; f<=10; f++){
@@ -333,13 +340,19 @@ function renderMap(){
 
   if(mapData?.floors?.length){
     const lanes = mapData.lanes || 5;
-    const colGap = 140;
-    const rowGap = 110;
-    const padX = 70;
-    const padY = 70;
-    const viewW = padX*2 + colGap * (mapData.floors.length - 1);
-    const viewH = padY*2 + rowGap * (lanes - 1);
-    svg.setAttribute('viewBox', `0 0 ${viewW} ${viewH}`);
+    const colGap = 150;
+    const rowGap = 130;
+    const padX = 90;
+    const padY = 90;
+    const baseW = padX*2 + colGap * (mapData.floors.length - 1);
+    const baseH = padY*2 + rowGap * (lanes - 1);
+    const viewW = baseW * MAP_ZOOM;
+    const viewH = baseH * MAP_ZOOM;
+    svg.setAttribute('viewBox', `0 0 ${baseW} ${baseH}`);
+    svg.setAttribute('width', `${viewW}`);
+    svg.setAttribute('height', `${viewH}`);
+    canvas.style.width = `${viewW}px`;
+    canvas.style.height = `${viewH}px`;
 
     const positions = new Map();
     mapData.floors.forEach((layer, colIdx)=>{
@@ -359,8 +372,8 @@ function renderMap(){
           <div class="nodeHint">${escapeHtml(node.hint)}</div>
           <div class="nodeFloor">Этаж ${node.floor}</div>
         `;
-        el.style.left = `${(x / viewW) * 100}%`;
-        el.style.top = `${(y / viewH) * 100}%`;
+        el.style.left = `${x * MAP_ZOOM}px`;
+        el.style.top = `${y * MAP_ZOOM}px`;
         if(reachable.has(node.id)){
           el.addEventListener('click', ()=> dispatch({type:'CHOOSE_ROOM', room_id: node.id}));
         }
@@ -384,6 +397,14 @@ function renderMap(){
         line.setAttribute('class', cls);
         svg.appendChild(line);
       }
+    }
+
+    const focusId = current || (run.room_choices || [])[0]?.id;
+    const focusPos = focusId ? positions.get(focusId) : null;
+    if(focusPos && graph){
+      const targetX = focusPos.x * MAP_ZOOM - graph.clientWidth / 2;
+      const targetY = focusPos.y * MAP_ZOOM - graph.clientHeight / 2;
+      graph.scrollTo({left: Math.max(0, targetX), top: Math.max(0, targetY)});
     }
   }
 
@@ -1028,6 +1049,10 @@ function wire(){
   $('#deckFilterType').addEventListener('change', renderDeck);
   $('#deckFilterTag').addEventListener('change', renderDeck);
   $('#deckSort').addEventListener('change', renderDeck);
+
+  // Map
+  $('#mapZoom').addEventListener('input', (ev)=>{ MAP_ZOOM = Number(ev.target.value) || 1; renderMap(); });
+  $('#mapResetView').addEventListener('click', ()=>{ MAP_ZOOM = 1; renderMap(); $('#mapGraph').scrollTo({left:0, top:0}); });
 
   // Reward
   $('#btnSkipReward').addEventListener('click', ()=> dispatch({type:'PICK_REWARD', card_id: null}));
