@@ -451,6 +451,21 @@ ENEMIES += [
         {"id":"CLAUSE","name":"Пункт договора", "type":"apply", "status":"vulnerable", "stacks":2, "w":2},
         {"id":"FINE","name":"Штраф", "type":"attack", "dmg":9, "w":1},
     ], tags=["control"]),
+    _enemy("MANA_LEECH", "Манопиявка", 26, [
+        {"id":"SIP","name":"Соснуть силы", "type":"attack", "dmg":5, "w":3},
+        {"id":"DRAIN","name":"Манослив", "type":"apply", "status":"weak", "stacks":2, "w":2},
+        {"id":"FUMES","name":"Тюремные испарения", "type":"apply_all", "status":"poison", "stacks":1, "w":1},
+    ], tags=["mana","poison"]),
+    _enemy("FROST_WARDEN", "Стужный надзиратель", 31, [
+        {"id":"ICECHAIN","name":"Ледяные цепи", "type":"attack_apply", "dmg":6, "status":"freeze", "stacks":2, "w":3},
+        {"id":"SHIELD","name":"Защитный купол", "type":"block", "block":9, "w":2},
+        {"id":"GLARE","name":"Холодный взгляд", "type":"apply", "status":"vulnerable", "stacks":1, "w":1},
+    ], tags=["freeze","control"]),
+    _enemy("BLOOD_BUTCHER", "Кровавый палач", 33, [
+        {"id":"HACK","name":"Расколоть", "type":"attack", "dmg":9, "w":3},
+        {"id":"BLEEDING","name":"Капать на пол", "type":"attack_apply", "dmg":5, "status":"bleed", "stacks":3, "w":2},
+        {"id":"GUARD","name":"Щиток", "type":"block", "block":7, "w":1},
+    ], tags=["bleed","burst"]),
 ]
 
 # Элиты — акт 2–3
