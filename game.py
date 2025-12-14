@@ -953,6 +953,15 @@ def resolve_effect_list(state: Dict[str, Any], combat: Dict[str, Any], effects: 
                 deal_damage(combat, p, target_ent, int(eff.get("amount", 0)), allow_crit=True, source="Эффект")
         elif op == "add_buff":
             add_buff(p, eff.get("buff"))
+        elif op == "heal":
+            amt = int(eff.get("amount", 0))
+            p["hp"] = min(int(p["max_hp"]), int(p.get("hp", 0)) + amt)
+        elif op == "lose_hp":
+            p["hp"] = max(0, int(p.get("hp", 0)) - int(eff.get("amount", 0)))
+        elif op == "heal_per_enemy":
+            amt = int(eff.get("amount", 0))
+            alive = sum(1 for e in combat.get("enemies", []) if e.get("hp", 0) > 0)
+            p["hp"] = min(int(p["max_hp"]), int(p.get("hp", 0)) + amt * alive)
         else:
             pass
 
@@ -1098,9 +1107,25 @@ def end_turn(state: Dict[str, Any]) -> None:
     if eclipse_plus:
         for e in combat["enemies"]:
             if e["hp"] > 0:
+                status_add(e, "poison", 3)
+                status_add(e, "burn", 3)
+        log(combat, "Затмение+: всем врагам +3 яд/+3 ожог.")
+    if "phoenix_heart" in p.get("buffs", {}):
+        stacks = int(p["buffs"].get("phoenix_heart", 1))
+        for e in combat["enemies"]:
+            if e["hp"] > 0:
+                status_add(e, "burn", 1 * stacks)
+        log(combat, "Сердце феникса: всем врагам +Ожог.")
+    if "phoenix_heart_plus" in p.get("buffs", {}):
+        stacks = int(p["buffs"].get("phoenix_heart_plus", 1))
+        for e in combat["enemies"]:
+            if e["hp"] > 0:
+                status_add(e, "burn", 2 * stacks)
+        log(combat, "Сердце феникса+: всем врагам +Ожог.")
                 status_add(e, "poison", 3 * eclipse_plus)
                 status_add(e, "burn", 3 * eclipse_plus)
         log(combat, f"Затмение+: всем врагам +{3 * eclipse_plus} яд/+{3 * eclipse_plus} ожог.")
+
 
     # burn tick на игроке (конец хода игрока)
     tick_burn(combat, p, owner="player")
@@ -1154,6 +1179,36 @@ def start_player_turn(state: Dict[str, Any]) -> None:
         log(combat, f"Батарея: +{battery_stacks} маны в начале хода.")
 
     # ward: блок в начале хода
+    if "ward_small" in p.get("buffs", {}):
+        p["block"] += 2
+    if "ward_medium" in p.get("buffs", {}):
+        p["block"] += 3
+    regen_heal = 0
+    regen_block = 0
+    buffs = p.get("buffs", {})
+    if "regen_small" in buffs:
+        regen_heal += 2 * int(buffs.get("regen_small", 1))
+    if "regen_medium" in buffs:
+        regen_heal += 3 * int(buffs.get("regen_medium", 1))
+    if "regen_guard" in buffs:
+        regen_heal += 4 * int(buffs.get("regen_guard", 1))
+        regen_block += 2 * int(buffs.get("regen_guard", 1))
+    if "regen_guard_plus" in buffs:
+        regen_heal += 5 * int(buffs.get("regen_guard_plus", 1))
+        regen_block += 3 * int(buffs.get("regen_guard_plus", 1))
+    if "phoenix_heart" in buffs:
+        regen_heal += 6 * int(buffs.get("phoenix_heart", 1))
+    if "phoenix_heart_plus" in buffs:
+        regen_heal += 7 * int(buffs.get("phoenix_heart_plus", 1))
+    if regen_heal > 0:
+        before = int(p.get("hp", 0))
+        p["hp"] = min(int(p["max_hp"]), before + regen_heal)
+        healed = p["hp"] - before
+        if healed > 0:
+            log(combat, f"Регенерация: +{healed} HP.")
+    if regen_block > 0:
+        p["block"] += regen_block
+        log(combat, f"Регенерация: +{regen_block} Блока.")
     ward_small = buff_count(p, "ward_small")
     ward_medium = buff_count(p, "ward_medium")
     if ward_small:

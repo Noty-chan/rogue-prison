@@ -55,14 +55,14 @@ def _c(
     }
 
 # --------------------------
-# 50 карт: 20/15/10/5
+# 60 карт: 24/18/12/6
 # Минимум 12 билд-тегов:
-# charge, poison, burn, bleed, control, stun, freeze, burst, discard, crit, block, mana, hex
+# charge, poison, burn, bleed, control, stun, freeze, burst, discard, crit, block, mana, hex, heal
 # --------------------------
 
 CARDS: List[Dict[str, Any]] = []
 
-# --- COMMON (20) ---
+# --- COMMON (24) ---
 CARDS += [
     _c("ARCANE_JAB", "Арканный тычок", "common", "attack", 1, "enemy",
        "Нанеси 6 урона. (Крит 15%)",
@@ -140,7 +140,7 @@ CARDS += [
        "Сбрось 2 случайные карты. Возьми 2 карты.",
        [{"op":"discard_random","n":2},{"op":"draw","n":2}],
        tags=["discard"]),
-    _c("PRISON_TATTOO", "Тюремная татуировка", "common", "upgrade", 1, "self",
+_c("PRISON_TATTOO", "Тюремная татуировка", "common", "upgrade", 1, "self",
        "Изгнание. До конца боя: в начале твоего хода получай 2 Блока.",
        [{"op":"add_buff","buff":"ward_small"}],
        tags=["block"],
@@ -154,9 +154,34 @@ CARDS += [
        exhaust=True,
        desc_up="Изгнание. До конца боя: твои атаки накладывают 2 Ожога.",
        effects_up=[{"op":"add_buff","buff":"burn_on_hit_2"}]),
+    _c("PATCH_UP", "Наложить бинты", "common", "defense", 1, "self",
+       "Получишь 6 Блока. Исцелись на 3.",
+       [{"op":"block","amount":6},{"op":"heal","amount":3}],
+       tags=["heal","block"],
+       desc_up="Получишь 7 Блока. Исцелись на 4.",
+       effects_up=[{"op":"block","amount":7},{"op":"heal","amount":4}]),
+    _c("SOUL_STITCH", "Стежок души", "common", "skill", 1, "self",
+       "Исцелись на 6. Возьми 1 карту.",
+       [{"op":"heal","amount":6},{"op":"draw","n":1}],
+       tags=["heal"],
+       desc_up="Исцелись на 8. Возьми 1 карту.",
+       effects_up=[{"op":"heal","amount":8},{"op":"draw","n":1}]),
+    _c("REST_TONIC", "Тоник отдыха", "common", "skill", 0, "self",
+       "Исцелись на 2. Получи +1 маны.",
+       [{"op":"heal","amount":2},{"op":"gain_mana","n":1}],
+       tags=["heal","mana"],
+       desc_up="Исцелись на 3. Получи +1 маны.",
+       effects_up=[{"op":"heal","amount":3},{"op":"gain_mana","n":1}]),
+    _c("REGROWTH_SIGIL", "Сигил возрождения", "common", "upgrade", 1, "self",
+       "Изгнание. До конца боя: в начале твоего хода исцеляйся на 2.",
+       [{"op":"add_buff","buff":"regen_small"}],
+       tags=["heal"],
+       exhaust=True,
+       desc_up="Изгнание. До конца боя: в начале твоего хода исцеляйся на 3.",
+       effects_up=[{"op":"add_buff","buff":"regen_medium"}]),
 ]
 
-# --- UNCOMMON (15) ---
+# --- UNCOMMON (18) ---
 CARDS += [
     _c("CHARGED_LANCE", "Заряжаемое копьё", "uncommon", "attack", 2, "enemy",
        "Нанеси 8 урона. Остаётся в руке и в конце хода получает +3 к урону.",
@@ -242,9 +267,27 @@ CARDS += [
        "Получишь 2 Блока. Возьми 1 карту. Сбрось 1 карту.",
        [{"op":"block","amount":2},{"op":"draw","n":1},{"op":"discard_choose","n":1}],
        tags=["discard","block"]),
+    _c("LIFESTEAL_SLASH", "Вампирский рез", "uncommon", "attack", 1, "enemy",
+       "Нанеси 7 урона. Исцелись на 4.",
+       [{"op":"damage","amount":7},{"op":"heal","amount":4}],
+       tags=["heal","burst"],
+       desc_up="Нанеси 9 урона. Исцелись на 5.",
+       effects_up=[{"op":"damage","amount":9},{"op":"heal","amount":5}]),
+    _c("VITAL_DRAW", "Тяга жизни", "uncommon", "skill", 1, "self",
+       "Потеряй 2 HP. Исцелись на 3 за каждого живого врага.",
+       [{"op":"lose_hp","amount":2},{"op":"heal_per_enemy","amount":3}],
+       tags=["heal"],
+       desc_up="Потеряй 2 HP. Исцелись на 4 за каждого врага.",
+       effects_up=[{"op":"lose_hp","amount":2},{"op":"heal_per_enemy","amount":4}]),
+    _c("BALM_BARRIER", "Бальзамный барьер", "uncommon", "defense", 1, "self",
+       "Получишь 9 Блока. Исцелись на 3. Если в руке есть карта исцеления — получи ещё 3 Блока.",
+       [{"op":"block","amount":9},{"op":"heal","amount":3},{"op":"if_hand_has_tag","tag":"heal","then":[{"op":"block","amount":3}]}],
+       tags=["heal","block"],
+       desc_up="11 Блока, исцеление 4, бонус Блок 4.",
+       effects_up=[{"op":"block","amount":11},{"op":"heal","amount":4},{"op":"if_hand_has_tag","tag":"heal","then":[{"op":"block","amount":4}]}]),
 ]
 
-# --- RARE (10) ---
+# --- RARE (12) ---
 CARDS += [
     _c("ARCANE_BATTERY", "Арканная батарея", "rare", "upgrade", 2, "self",
        "Изгнание. До конца боя: +2 Макс.Маны и в начале хода +1 мана.",
@@ -304,9 +347,22 @@ CARDS += [
        tags=["burst","poison","burn","bleed"],
        desc_up="То же, но урон +25%.",
        effects_up=[{"op":"dot_detach_explode","statuses":["poison","burn","bleed"],"mult":1.25}]),
+    _c("SANCTUARY_RUNE", "Священный символ", "rare", "upgrade", 2, "self",
+       "Изгнание. До конца боя: в начале хода исцеляйся на 4 и получай 2 Блока.",
+       [{"op":"add_buff","buff":"regen_guard"}],
+       tags=["heal","block"],
+       exhaust=True,
+       desc_up="Изгнание. Исцеляйся на 5 и получай 3 Блока в начале хода.",
+       effects_up=[{"op":"add_buff","buff":"regen_guard_plus"}]),
+    _c("SECOND_WIND", "Второе дыхание", "rare", "skill", 1, "self",
+       "Исцелись на 10. Возьми 2 карты, затем сбрось 1 карту.",
+       [{"op":"heal","amount":10},{"op":"draw","n":2},{"op":"discard_choose","n":1}],
+       tags=["heal","discard"],
+       desc_up="Исцелись на 12. Возьми 3 карты, затем сбрось 1 карту.",
+       effects_up=[{"op":"heal","amount":12},{"op":"draw","n":3},{"op":"discard_choose","n":1}]),
 ]
 
-# --- LEGENDARY (5) ---
+# --- LEGENDARY (6) ---
 CARDS += [
     _c("CRIT_OF_DAMNED", "Крит проклятых", "legendary", "upgrade", 1, "self",
        "Изгнание. До конца боя: +25% шанс крита. Криты наносят x3 урона.",
@@ -341,16 +397,23 @@ CARDS += [
        exhaust=True,
        desc_up="Нанеси 35 урона всем. Изгнание.",
        effects_up=[{"op":"aoe_damage","amount":35}]),
+    _c("PHOENIX_HEART", "Сердце феникса", "legendary", "upgrade", 2, "self",
+       "Изгнание. До конца боя: в начале хода исцеляйся на 6 и накладывай 1 Ожог всем врагам.",
+       [{"op":"add_buff","buff":"phoenix_heart"}],
+       tags=["heal","burn"],
+       exhaust=True,
+       desc_up="В начале хода исцеление 7 и 2 Ожога всем врагам.",
+       effects_up=[{"op":"add_buff","buff":"phoenix_heart_plus"}]),
 ]
 
 # Проверка количества по редкостям (на этапе импорта).
 _counts = {r:0 for r in RARITIES}
 for c in CARDS:
     _counts[c["rarity"]] += 1
-assert _counts["common"] == 20, f"common should be 20, got {_counts['common']}"
-assert _counts["uncommon"] == 15, f"uncommon should be 15, got {_counts['uncommon']}"
-assert _counts["rare"] == 10, f"rare should be 10, got {_counts['rare']}"
-assert _counts["legendary"] == 5, f"legendary should be 5, got {_counts['legendary']}"
+assert _counts["common"] == 24, f"common should be 24, got {_counts['common']}"
+assert _counts["uncommon"] == 18, f"uncommon should be 18, got {_counts['uncommon']}"
+assert _counts["rare"] == 12, f"rare should be 12, got {_counts['rare']}"
+assert _counts["legendary"] == 6, f"legendary should be 6, got {_counts['legendary']}"
 
 CARD_INDEX: Dict[str, Dict[str, Any]] = {c["id"]: c for c in CARDS}
 
@@ -377,6 +440,8 @@ def get_card_def(card_id: str, upgraded: bool=False) -> Dict[str, Any]:
 BUFFS: Dict[str, Dict[str, Any]] = {
     "ward_small": {"name":"Тату: мини-щит", "desc":"В начале твоего хода +2 Блока.", "hooks":["turn_start_player"]},
     "ward_medium": {"name":"Тату: щит", "desc":"В начале твоего хода +3 Блока.", "hooks":["turn_start_player"]},
+    "regen_small": {"name":"Возрождение", "desc":"В начале твоего хода лечишься на 2.", "hooks":["turn_start_player"]},
+    "regen_medium": {"name":"Возрождение+", "desc":"В начале твоего хода лечишься на 3.", "hooks":["turn_start_player"]},
     "burn_on_hit": {"name":"Тлеющее клеймо", "desc":"Твои атаки накладывают 1 Ожог.", "hooks":["on_attack_hit"]},
     "burn_on_hit_2": {"name":"Тлеющее клеймо+", "desc":"Твои атаки накладывают 2 Ожога.", "hooks":["on_attack_hit"]},
     "crit_plus_10": {"name":"Школа критов", "desc":"+10% шанс крита.", "hooks":[]},
@@ -395,6 +460,10 @@ BUFFS: Dict[str, Dict[str, Any]] = {
     "crit_godmode": {"name":"Крит проклятых", "desc":"+25% крит, крит x3.", "hooks":[]},
     "eclipse": {"name":"Тюремное затмение", "desc":"В конце твоего хода: всем врагам +2 яд, +2 ожог.", "hooks":["turn_end_player"]},
     "eclipse_plus": {"name":"Тюремное затмение+", "desc":"В конце твоего хода: всем врагам +3 яд, +3 ожог.", "hooks":["turn_end_player"]},
+    "regen_guard": {"name":"Священный символ", "desc":"В начале хода: лечишься на 4 и получаешь 2 Блока.", "hooks":["turn_start_player"]},
+    "regen_guard_plus": {"name":"Священный символ+", "desc":"В начале хода: лечишься на 5 и получаешь 3 Блока.", "hooks":["turn_start_player"]},
+    "phoenix_heart": {"name":"Сердце феникса", "desc":"Начало хода: лечишься на 6 и накладываешь 1 Ожог всем врагам.", "hooks":["turn_start_player","turn_end_player"]},
+    "phoenix_heart_plus": {"name":"Сердце феникса+", "desc":"Начало хода: лечишься на 7 и накладываешь 2 Ожога всем врагам.", "hooks":["turn_start_player","turn_end_player"]},
 }
 
 # --------------------------
