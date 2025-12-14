@@ -473,7 +473,8 @@ function renderStatuses(statuses, buffs){
   }
   for(const [k,v] of Object.entries(buffs || {})){
     const bf = STATE.content_summary?.buffs?.[k];
-    html += `<div class="status"><span class="k">${escapeHtml(bf?.name || k)}</span></div>`;
+    const stacks = v > 1 ? ` x${v}` : '';
+    html += `<div class="status"><span class="k">${escapeHtml(bf?.name || k)}</span>${stacks}</div>`;
   }
   return html || `<div class="muted tiny">нет эффектов</div>`;
 }
