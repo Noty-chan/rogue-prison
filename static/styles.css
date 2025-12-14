@@ -26,10 +26,20 @@ body{
     linear-gradient(180deg, var(--bg0), var(--bg1));
   font-family: "VT323", ui-monospace, monospace;
   font-size: 20px;
-  overflow-y: scroll;
+  overflow-y: auto;
   overflow-x:hidden;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
 }
+
+/* Системные скроллбары делаем темнее, чтобы не появлялась светлая полоса сбоку */
+body::-webkit-scrollbar{width:12px}
+body::-webkit-scrollbar-track{background: linear-gradient(180deg, var(--bg0), var(--bg1))}
+body::-webkit-scrollbar-thumb{
+  background: rgba(139,92,246,.35);
+  border: 2px solid rgba(10,10,16,.85);
+  border-radius: 12px;
+}
+body::-webkit-scrollbar-thumb:hover{background: rgba(139,92,246,.55)}
 
 /* scanlines */
 body:before{
@@ -145,12 +155,13 @@ body:before{
   background: rgba(0,0,0,.62);
   z-index:40;
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:center;
-  padding:18px;
+  padding:28px 18px 22px;
+  overflow:auto;
 }
 .panel{
-  width: min(720px, 95vw);
+  width: min(820px, 92vw);
   max-height: 90vh;
   background: linear-gradient(180deg, rgba(26,26,43,.96), rgba(15,15,25,.96));
   border:1px solid var(--border);
@@ -158,8 +169,9 @@ body:before{
   box-shadow: 0 30px 90px rgba(0,0,0,.55);
   padding:18px 18px 14px;
   overflow:auto;
+  margin-inline:auto;
 }
-.panel.wide{width:min(1100px, 96vw)}
+.panel.wide{width:min(1080px, 94vw)}
 .panel h1,.panel h2,.panel h3{
   font-family:"Press Start 2P";
   font-weight:800;
