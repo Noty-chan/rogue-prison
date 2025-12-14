@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Magic Prison Roguelike</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Псевдо-пиксель -->
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app" class="app">
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">⛓</div>
+        <div class="title">
+          <div class="t1">MAGIC PRISON</div>
+          <div class="t2">дуэли. мрак. ирония.</div>
+        </div>
+      </div>
+
+      <div class="hud">
+        <div class="hudItem" id="hudFloor">Этаж: —</div>
+        <div class="hudItem" id="hudAct">Акт: —</div>
+        <div class="hudItem" id="hudDiff">Сложн: —</div>
+        <div class="hudItem hp" id="hudHP">HP: —/—</div>
+        <div class="hudItem mana" id="hudMana">Мана: —/—</div>
+        <div class="hudItem gold" id="hudGold">Жетоны: —</div>
+      </div>
+
+      <div class="nav">
+        <button class="btn btnGhost" id="btnDeck">Колода</button>
+        <button class="btn btnGhost" id="btnCodex">Энциклопедия</button>
+        <button class="btn btnGhost" id="btnSettings">Настройки</button>
+        <button class="btn btnGhost" id="btnMenu">Меню</button>
+      </div>
+    </header>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- MENU -->
+    <div id="overlayMenu" class="overlay hidden">
+      <div class="panel">
+        <h1>Тюрьма ждёт.</h1>
+        <p class="muted">Бесконечные дуэли за десять этажей… а потом — петля.</p>
+        <div class="grid2">
+          <button class="btn btnPrimary" id="btnNewRun">Новый забег</button>
+          <button class="btn" id="btnContinue">Продолжить</button>
+          <button class="btn" id="btnMenuSettings">Настройки</button>
+          <button class="btn" id="btnMenuCodex">Энциклопедия</button>
+        </div>
+        <div class="hr"></div>
+        <p class="tiny muted">Управление: перетаскивай карты на цель. Space — конец хода.</p>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="overlaySettings" class="overlay hidden">
+      <div class="panel">
+        <h2>Настройки</h2>
+        <label class="row">
+          <span>Сложность (шкала)</span>
+          <input id="difficultyRange" type="range" min="0" max="10" step="1" value="1"/>
+          <span id="difficultyValue" class="chip">1</span>
+        </label>
+        <p class="tiny muted">Сложность влияет на здоровье и урон врагов. Петли после победы тоже усиливают масштаб.</p>
+        <div class="rowEnd">
+          <button class="btn btnPrimary" id="btnSaveSettings">Сохранить</button>
+          <button class="btn" id="btnCloseSettings">Закрыть</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CODEX -->
+    <div id="overlayCodex" class="overlay hidden">
+      <div class="panel wide">
+        <h2>Энциклопедия карт</h2>
+        <div class="row">
+          <input id="codexSearch" class="input" placeholder="Поиск… (яд, заряд, ожог, и т.д.)"/>
+          <select id="codexFilterRarity" class="input">
+            <option value="">Все редкости</option>
+            <option value="common">Обычная</option>
+            <option value="uncommon">Необычная</option>
+            <option value="rare">Редкая</option>
+            <option value="legendary">Легендарная</option>
+          </select>
+          <select id="codexFilterType" class="input">
+            <option value="">Все типы</option>
+            <option value="attack">Атака</option>
+            <option value="defense">Защита</option>
+            <option value="skill">Навык</option>
+            <option value="upgrade">Апгрейд</option>
+          </select>
+          <button class="btn" id="btnCloseCodex">Закрыть</button>
+        </div>
+        <div id="codexList" class="codexList"></div>
+      </div>
+    </div>
+
+    <!-- DECK -->
+    <div id="overlayDeck" class="overlay hidden">
+      <div class="panel wide">
+        <h2>Колода</h2>
+        <div class="row">
+          <div class="chip" id="deckCount">0 карт</div>
+          <div class="spacer"></div>
+          <button class="btn" id="btnCloseDeck">Закрыть</button>
+        </div>
+        <div id="deckList" class="deckList"></div>
+      </div>
+    </div>
+
+    <!-- SCREEN: MAP -->
+    <section id="screenMap" class="screen hidden">
+      <div class="screenHeader">
+        <h2>Карта тюрьмы</h2>
+        <p class="muted">Выбери путь. Тюрьма выбрала тебя давно.</p>
+      </div>
+      <div id="mapProgress" class="mapProgress"></div>
+      <div id="roomChoices" class="roomChoices"></div>
+    </section>
+
+    <!-- SCREEN: COMBAT -->
+    <section id="screenCombat" class="screen hidden">
+      <div class="arena">
+        <div id="enemyRow" class="enemyRow"></div>
+
+        <div class="battlefield">
+          <div id="playerPanel" class="entity player">
+            <div class="entityName">Ты</div>
+            <div class="bars">
+              <div class="bar hp"><span id="playerHPText"></span></div>
+              <div class="bar mana"><span id="playerManaText"></span></div>
+            </div>
+            <div id="playerStatuses" class="statusRow"></div>
+          </div>
+
+          <div class="centerSigil">
+            <div class="sigil">✶</div>
+            <div class="tiny muted">перетащи карту на цель</div>
+          </div>
+
+          <div id="pilePanel" class="pilePanel">
+            <div class="pile">Колода <span id="drawCount">0</span></div>
+            <div class="pile">Сброс <span id="discardCount">0</span></div>
+            <div class="pile">Изгн. <span id="exhaustCount">0</span></div>
+          </div>
+        </div>
+
+        <div class="combatFooter">
+          <div class="logBox" id="combatLog"></div>
+          <div class="actions">
+            <button class="btn btnPrimary" id="btnEndTurn">Конец хода</button>
+          </div>
+        </div>
+
+        <div id="hand" class="hand"></div>
+      </div>
+    </section>
+
+    <!-- SCREEN: REWARD -->
+    <section id="screenReward" class="screen hidden">
+      <div class="panel wide">
+        <h2>Награда</h2>
+        <p class="muted" id="rewardText"></p>
+        <div id="rewardChoices" class="rewardChoices"></div>
+        <div class="rowEnd">
+          <button class="btn" id="btnSkipReward">Пропустить</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN: EVENT -->
+    <section id="screenEvent" class="screen hidden">
+      <div class="panel wide">
+        <h2 id="eventTitle">Событие</h2>
+        <p id="eventDesc" class="muted"></p>
+        <div id="eventOptions" class="roomChoices"></div>
+      </div>
+    </section>
+
+    <!-- SCREEN: EVENT_PICK -->
+    <section id="screenEventPick" class="screen hidden">
+      <div class="panel wide">
+        <h2 id="eventPickTitle">Выбор</h2>
+        <p id="eventPickDesc" class="muted"></p>
+        <div id="eventPickChoices" class="rewardChoices"></div>
+      </div>
+    </section>
+
+    <!-- SCREEN: SHOP -->
+    <section id="screenShop" class="screen hidden">
+      <div class="panel wide">
+        <h2>Лавка</h2>
+        <p class="muted">«Скидок нет. Есть только сожаления.»</p>
+        <div id="shopOffers" class="rewardChoices"></div>
+        <div class="hr"></div>
+        <div id="shopServices" class="roomChoices"></div>
+        <div class="rowEnd">
+          <button class="btn btnPrimary" id="btnLeaveShop">Уйти</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN: SHOP_REMOVE -->
+    <section id="screenShopRemove" class="screen hidden">
+      <div class="panel wide">
+        <h2>Удаление карты</h2>
+        <p class="muted">Выбери, что сгорит в печи.</p>
+        <div id="shopRemoveChoices" class="rewardChoices"></div>
+      </div>
+    </section>
+
+    <!-- SCREEN: CAMPFIRE -->
+    <section id="screenCampfire" class="screen hidden">
+      <div class="panel">
+        <h2>Костёр</h2>
+        <p class="muted">Два пути: лечиться или улучшить одну карту.</p>
+        <div class="grid2">
+          <button class="btn btnPrimary" id="btnCampRest">Отдых</button>
+          <button class="btn" id="btnCampUpgrade">Улучшить</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN: CAMPFIRE_UP -->
+    <section id="screenCampfireUp" class="screen hidden">
+      <div class="panel wide">
+        <h2>Улучшение</h2>
+        <p class="muted">Выбери карту (из 4 случайных).</p>
+        <div id="campfireUpChoices" class="rewardChoices"></div>
+      </div>
+    </section>
+
+    <!-- SCREEN: ACT_END -->
+    <section id="screenActEnd" class="screen hidden">
+      <div class="panel wide">
+        <h2>Конец акта</h2>
+        <p class="muted">Трофей: продублируй одну карту. Потом — сожги одну.</p>
+        <div class="grid2">
+          <div>
+            <h3>Дубликат</h3>
+            <div id="actDupChoices" class="rewardChoices"></div>
+          </div>
+          <div>
+            <h3>Удаление</h3>
+            <div id="actRemChoices" class="rewardChoices"></div>
+          </div>
+        </div>
+        <p class="tiny muted">Пока не сделаешь и то, и другое, дверь не откроется.</p>
+      </div>
+    </section>
+
+    <!-- SCREEN: INHERIT -->
+    <section id="screenInherit" class="screen hidden">
+      <div class="panel wide">
+        <h2>Наследие</h2>
+        <p class="muted">Ты можешь пронести 3 старые карты. Каждая — выбор из 5 случайных.</p>
+        <div id="inheritSlots" class="inheritSlots"></div>
+      </div>
+    </section>
+
+    <!-- SCREEN: VICTORY -->
+    <section id="screenVictory" class="screen hidden">
+      <div class="panel">
+        <h2>Победа</h2>
+        <p class="muted">Ты прошёл десять этажей. Тюрьма отметила это молчанием.</p>
+        <div class="grid2">
+          <button class="btn btnPrimary" id="btnEndless">Продолжить (петля)</button>
+          <button class="btn" id="btnVictoryNewRun">Новый забег</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN: DEFEAT -->
+    <section id="screenDefeat" class="screen hidden">
+      <div class="panel">
+        <h2>Поражение</h2>
+        <p class="muted">Здесь смеются тихо. Чтобы слышно было тебе.</p>
+        <div class="grid2">
+          <button class="btn btnPrimary" id="btnDefeatNewRun">Новый забег</button>
+          <button class="btn" id="btnDefeatMenu">В меню</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODAL for combat pending selections -->
+    <div id="modal" class="overlay hidden">
+      <div class="panel wide">
+        <h2 id="modalTitle">Выбор</h2>
+        <p id="modalDesc" class="muted"></p>
+        <div id="modalBody" class="rewardChoices"></div>
+        <div class="rowEnd">
+          <button class="btn btnPrimary" id="btnModalConfirm">Подтвердить</button>
+          <button class="btn" id="btnModalCancel">Отмена</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

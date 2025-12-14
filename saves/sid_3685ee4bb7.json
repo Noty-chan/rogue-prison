@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "updated_at": 1765744554,
+  "screen": "COMBAT",
+  "settings": {
+    "difficulty": 1
+  },
+  "meta": {
+    "last_deck": [],
+    "last_result": null,
+    "last_seen_at": 1765744471
+  },
+  "run": {
+    "id": "run_ac67e77176",
+    "seed": 1330604096,
+    "rng_ctr": 5,
+    "started_at": 1765744504,
+    "difficulty": 1,
+    "loop": 0,
+    "floor": 2,
+    "act": 1,
+    "gold": 112,
+    "max_hp": 70,
+    "hp": 70,
+    "deck": [
+      {
+        "uid": "card_32b68bd425",
+        "id": "ARCANE_JAB",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_8af1cc83b5",
+        "id": "ARCANE_JAB",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_fd3190953f",
+        "id": "GUARD_SIGIL",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_7adabaed53",
+        "id": "GUARD_SIGIL",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_7212042d89",
+        "id": "SPARK_SHOT",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_7eee0c7deb",
+        "id": "SIDESTEP_GLYPH",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_52c8cb93e5",
+        "id": "FOCUS",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_722dadaad3",
+        "id": "MANA_DRIP",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_0333e721c6",
+        "id": "RUNE_SLASH",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_251d7e8182",
+        "id": "CHAIN_PULL",
+        "up": false,
+        "note": ""
+      },
+      {
+        "uid": "card_fb0a582f96",
+        "id": "ASH_FLICK",
+        "up": false,
+        "note": ""
+      }
+    ],
+    "combat": {
+      "turn": 1,
+      "phase": "player",
+      "player": {
+        "hp": 70,
+        "max_hp": 70,
+        "block": 0,
+        "mana_max": 3,
+        "mana": 2,
+        "statuses": {},
+        "buffs": {},
+        "crit": 0.15
+      },
+      "enemies": [
+        {
+          "id": "ICE_WRAITH",
+          "name": "Ледяной призрак",
+          "hp": 28,
+          "max_hp": 28,
+          "block": 0,
+          "statuses": {
+            "vulnerable": 2
+          },
+          "buffs": {},
+          "vars": {},
+          "moves": [
+            {
+              "id": "CHILL",
+              "name": "Холод",
+              "type": "apply",
+              "status": "freeze",
+              "stacks": 2,
+              "w": 3
+            },
+            {
+              "id": "SLASH",
+              "name": "Ледяной рез",
+              "type": "attack",
+              "dmg": 6,
+              "w": 2
+            },
+            {
+              "id": "FADE",
+              "name": "Истаять",
+              "type": "block",
+              "block": 7,
+              "w": 1
+            }
+          ],
+          "intent": {
+            "type": "block",
+            "name": "Истаять",
+            "block": 7
+          },
+          "last_move": null,
+          "next_move": {
+            "id": "FADE",
+            "name": "Истаять",
+            "type": "block",
+            "block": 7,
+            "w": 1
+          }
+        }
+      ],
+      "draw_pile": [
+        {
+          "uid": "card_7adabaed53",
+          "id": "GUARD_SIGIL",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        },
+        {
+          "uid": "card_32b68bd425",
+          "id": "ARCANE_JAB",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        },
+        {
+          "uid": "card_722dadaad3",
+          "id": "MANA_DRIP",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        },
+        {
+          "uid": "card_fd3190953f",
+          "id": "GUARD_SIGIL",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        },
+        {
+          "uid": "card_fb0a582f96",
+          "id": "ASH_FLICK",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        }
+      ],
+      "discard_pile": [
+        {
+          "uid": "card_251d7e8182",
+          "id": "CHAIN_PULL",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        }
+      ],
+      "exhaust_pile": [],
+      "hand": [
+        {
+          "uid": "card_52c8cb93e5",
+          "id": "FOCUS",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        },
+        {
+          "uid": "card_8af1cc83b5",
+          "id": "ARCANE_JAB",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        },
+        {
+          "uid": "card_7212042d89",
+          "id": "SPARK_SHOT",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        },
+        {
+          "uid": "card_0333e721c6",
+          "id": "RUNE_SLASH",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        },
+        {
+          "uid": "card_7eee0c7deb",
+          "id": "SIDESTEP_GLYPH",
+          "up": false,
+          "note": "",
+          "charge": 0,
+          "temp_cost_mod": 0
+        }
+      ],
+      "pending": null,
+      "log": [
+        "Этаж 2, акт 1. В бой!",
+        "Рывок цепью: Уязвимость +2."
+      ],
+      "_rng": 
