@@ -142,10 +142,22 @@
         <h2>Карта тюрьмы</h2>
         <p class="muted">Выбери путь. Тюрьма выбрала тебя давно.</p>
       </div>
+      <div class="mapToolbar row wrap">
+        <div class="row">
+          <span class="tiny muted">Масштаб</span>
+          <input id="mapZoom" type="range" min="0.6" max="1.4" step="0.1" value="1" />
+          <span id="mapZoomLabel" class="tiny muted">100%</span>
+        </div>
+        <button class="btn" id="mapResetView">Сбросить</button>
+        <div class="spacer"></div>
+        <span class="tiny muted">Колёсико мыши внутри карты двигает поле, масштаб — ползунком.</span>
+      </div>
       <div id="mapProgress" class="mapProgress"></div>
       <div id="mapGraph" class="mapGraph">
-        <svg id="mapLinks" class="mapLinks" aria-hidden="true"></svg>
-        <div id="mapColumns" class="mapColumns"></div>
+        <div id="mapCanvas" class="mapCanvas">
+          <svg id="mapLinks" class="mapLinks" aria-hidden="true"></svg>
+          <div id="mapColumns" class="mapColumns"></div>
+        </div>
       </div>
       <div class="hr"></div>
       <p class="tiny muted">Доступные узлы (для мобильных устройств можно тапать здесь):</p>
