@@ -149,11 +149,13 @@ body:before{
 }
 .panel{
   width: min(720px, 95vw);
+  max-height: 90vh;
   background: linear-gradient(180deg, rgba(26,26,43,.96), rgba(15,15,25,.96));
   border:1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 30px 90px rgba(0,0,0,.55);
   padding:18px 18px 14px;
+  overflow:auto;
 }
 .panel.wide{width:min(1100px, 96vw)}
 .panel h1,.panel h2,.panel h3{
@@ -404,7 +406,7 @@ body:before{
 /* Codex */
 .codexList{
   display:grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap:10px;
   margin-top:12px;
 }
