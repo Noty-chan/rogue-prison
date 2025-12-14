@@ -160,6 +160,39 @@ def sanitize_for_client(state: Dict[str, Any]) -> Dict[str, Any]:
     }
     return st
 
+def continue_run(state: Dict[str, Any]) -> None:
+    """Вернуться в актуальный экран после перезагрузки."""
+    run = state.get("run")
+    state.setdefault("ui", {})
+    if not run:
+        state["screen"] = "MENU"
+        state["ui"]["toast"] = "Активный забег не найден."
+        state["updated_at"] = now_ts()
+        return
+
+    if state.get("screen") in ("VICTORY", "DEFEAT", "INHERIT"):
+        # уважим финальные экраны, если вдруг их нужно показать повторно
+        state["updated_at"] = now_ts()
+        return
+
+    if run.get("combat"):
+        state["screen"] = "COMBAT"
+    elif run.get("reward"):
+        state["screen"] = "REWARD"
+    elif run.get("event_pick"):
+        state["screen"] = "EVENT_PICK"
+    elif run.get("event"):
+        state["screen"] = "EVENT"
+    elif run.get("shop_remove"):
+        state["screen"] = "SHOP_REMOVE"
+    elif run.get("shop"):
+        state["screen"] = "SHOP"
+    elif run.get("room_choices"):
+        state["screen"] = "MAP"
+    else:
+        state["screen"] = "MAP"
+    state["updated_at"] = now_ts()
+
 def card_view(inst: Dict[str, Any]) -> Dict[str, Any]:
     d = content.get_card_def(inst["id"], upgraded=bool(inst.get("up", False)))
     v = {
@@ -1567,6 +1600,10 @@ def dispatch(state: Dict[str, Any], action: Dict[str, Any]) -> None:
             state["ui"]["toast"] = "Выбери наследие (3 карты)."
             return
         new_run(state)
+        return
+
+    if typ == "CONTINUE":
+        continue_run(state)
         return
 
     if typ == "INHERIT_PICK":

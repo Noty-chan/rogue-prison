@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 from typing import Dict, Any, Optional
-import os, json
+import os, json, tempfile
 
 from flask import Flask, request, send_from_directory, jsonify
 
@@ -23,17 +23,46 @@ def save_path(sid: str) -> str:
 
 def load_state(sid: str) -> Dict[str, Any]:
     p = save_path(sid)
+    was_corrupt = False
     if os.path.exists(p):
-        with open(p, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            # битый сейв — переименуем и продолжим с новым
+            was_corrupt = True
+            corrupt = p + ".corrupt"
+            if os.path.exists(corrupt):
+                corrupt = p + f".{game.now_ts()}.corrupt"
+            os.replace(p, corrupt)
+        except Exception:
+            # любой другой сбой — сбрасываем состояние, но не падаем
+            was_corrupt = True
     st = game.default_state()
+    if was_corrupt:
+        st.setdefault("ui", {})["toast"] = "Сейв повреждён и восстановлен."
     return st
+
+def _strip_transient(state: Dict[str, Any]):
+    run = state.get("run")
+    if not run:
+        return
+    combat = run.get("combat")
+    if combat:
+        combat.pop("_rng", None)
 
 def save_state(sid: str, st: Dict[str, Any]) -> None:
     p = save_path(sid)
     st["updated_at"] = game.now_ts()
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(st, f, ensure_ascii=False, indent=2)
+    _strip_transient(st)
+    tmp_fd, tmp_path = tempfile.mkstemp(prefix="save_", suffix=".tmp", dir=SAVE_DIR)
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            json.dump(st, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, p)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 @app.get("/")
 def index():

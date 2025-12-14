@@ -41,6 +41,9 @@ async function bootstrap(){
   localStorage.setItem('mprl_sid', SID);
   STATE = data.state;
   renderAll();
+  if(STATE?.run){
+    await dispatch({type:'CONTINUE'});
+  }
   // подгрузим контент для кодекса/наследия
   try{
     CONTENT = await apiGet('/api/content');
@@ -745,7 +748,7 @@ function wire(){
   $('#btnMenu').addEventListener('click', ()=> show($('#overlayMenu'), true));
   $('#btnMenuCodex').addEventListener('click', openCodex);
   $('#btnMenuSettings').addEventListener('click', ()=> show($('#overlaySettings'), true));
-  $('#btnContinue').addEventListener('click', ()=> show($('#overlayMenu'), false));
+  $('#btnContinue').addEventListener('click', ()=> { show($('#overlayMenu'), false); dispatch({type:'CONTINUE'}); });
   $('#btnNewRun').addEventListener('click', ()=> dispatch({type:'NEW_RUN'}));
 
   // Settings
