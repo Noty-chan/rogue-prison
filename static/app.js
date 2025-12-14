@@ -84,6 +84,125 @@ function tagToRu(tag){
   return map[tag] || tag;
 }
 
+const TAG_INFO = {
+  charge: {title:'Заряд', desc:'Карта остаётся в руке и накапливает силу каждый ход.'},
+  poison: {title:'Яд', desc:'В начале хода цель получает урон = стаки, затем они уменьшаются.'},
+  burn: {title:'Ожог', desc:'В конце хода цель получает урон = стаки.'},
+  bleed: {title:'Кровоток', desc:'Когда цель атакует, она получает урон = стаки (уменьшаются).'},
+  control: {title:'Контроль', desc:'Ослабление и debuff-эффекты (слабость/уязвимость и т.п.).'},
+  stun: {title:'Оглушение', desc:'Цель пропускает ход.'},
+  freeze: {title:'Заморозка', desc:'Снижает урон цели, может пропустить ход.'},
+  burst: {title:'Бурст', desc:'Прямой урон и добивание.'},
+  discard: {title:'Сброс', desc:'Вращение колоды, взаимодействие со сбросом.'},
+  crit: {title:'Крит', desc:'Повышенный шанс/урон критических ударов.'},
+  block: {title:'Блок', desc:'Защита и удержание здоровья.'},
+  mana: {title:'Мана', desc:'Генерация и экономия маны/энергии.'},
+  execute: {title:'Казнь', desc:'Эффекты добивания слабых целей.'},
+};
+
+function statusInfo(key){
+  const st = STATE?.content_summary?.statuses?.[key];
+  if(!st) return null;
+  return `${st.name}: ${st.desc}`;
+}
+
+function buffInfo(key){
+  const bf = STATE?.content_summary?.buffs?.[key];
+  if(!bf) return null;
+  return `${bf.name}: ${bf.desc}`;
+}
+
+function describeEffect(eff){
+  const op = eff?.op;
+  if(op === 'damage') return `Урон: ${eff.amount?.base ?? eff.amount ?? 0}${eff.amount?.plus_charge ? ' (+заряд)' : ''}`;
+  if(op === 'aoe_damage') return `Урон всем: ${eff.amount ?? 0}`;
+  if(op === 'block') return `Блок: ${eff.amount ?? 0}`;
+  if(op === 'heal') return `Лечение: ${eff.amount ?? 0}`;
+  if(op === 'draw') return `Добор: ${eff.n ?? 0}`;
+  if(op === 'gain_mana') return `+${eff.n ?? 0} маны`;
+  if(op === 'discard_choose') return `Сброс по выбору: ${eff.n ?? 0}`;
+  if(op === 'discard') return `Сброс случайных: ${eff.n ?? 0}`;
+  if(op === 'apply' || op === 'apply_all'){
+    const info = statusInfo(eff.status);
+    return info ? `Статус: ${info} (${eff.stacks ?? 0})` : `Статус: ${eff.status} ${eff.stacks ?? ''}`;
+  }
+  if(op === 'gain_buff'){
+    const info = buffInfo(eff.buff);
+    return info ? `Баф: ${info}` : `Баф: ${eff.buff || ''}`;
+  }
+  if(op === 'choose_one') return 'Выбор одного эффекта';
+  return null;
+}
+
+let CARD_TOOLTIP = null;
+function ensureCardTooltip(){
+  if(CARD_TOOLTIP) return CARD_TOOLTIP;
+  const el = document.createElement('div');
+  el.className = 'cardTooltip hidden';
+  document.body.appendChild(el);
+  CARD_TOOLTIP = el;
+  return el;
+}
+
+function hideCardTooltip(){
+  const el = ensureCardTooltip();
+  el.classList.add('hidden');
+}
+
+function tooltipData(cardId, upgraded=false, fallback){
+  let def = cardDefFromId(cardId, upgraded);
+  if(!def && fallback){
+    def = {...fallback};
+  }
+  if(!def) return null;
+  if(upgraded && def.desc_up){
+    def = {...def, desc: def.desc_up, effects: def.effects_up || def.effects};
+  }
+  return def;
+}
+
+function showCardTooltip(anchor, cardId, upgraded=false, fallback){
+  const def = tooltipData(cardId, upgraded, fallback);
+  if(!def) return;
+  const el = ensureCardTooltip();
+  const effects = (def.effects || []).map(describeEffect).filter(Boolean);
+  const tags = def.tags || [];
+  const tagLines = tags.map(t=>{
+    const info = TAG_INFO[t];
+    return info ? `<div><strong>${escapeHtml(info.title)}</strong> — ${escapeHtml(info.desc)}</div>` : `<div><strong>${escapeHtml(tagToRu(t))}</strong></div>`;
+  }).join('');
+
+  const body = `
+    <div class="title">${escapeHtml(def.name || cardId)}${upgraded?'+':''}</div>
+    <div class="section"><strong>${escapeHtml(rarityName(def.rarity||''))}</strong> · ${escapeHtml(typeName(def.type||''))}</div>
+    ${tagLines ? `<div class="section">${tagLines}</div>` : ''}
+    ${effects.length ? `<div class="section">${effects.map(escapeHtml).join('<br>')}</div>` : ''}
+  `;
+  el.innerHTML = body;
+
+  const rect = anchor.getBoundingClientRect();
+  const pad = 8;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let left = rect.right + pad;
+  let top = rect.top;
+  const width = Math.min(280, vw - 2*pad);
+  if(left + width > vw - pad) left = Math.max(pad, rect.left - width - pad);
+  el.classList.remove('hidden');
+  const height = el.offsetHeight || 0;
+  if(top + height > vh - pad) top = vh - height - pad;
+  el.style.left = `${left}px`;
+  el.style.top = `${Math.max(pad, top)}px`;
+  el.classList.remove('hidden');
+}
+
+function attachCardTooltip(el, cardId, upgraded=false, fallback){
+  if(!el) return;
+  el.addEventListener('pointerenter', ()=> showCardTooltip(el, cardId, upgraded, fallback));
+  el.addEventListener('pointerleave', hideCardTooltip);
+  el.addEventListener('pointerdown', hideCardTooltip);
+}
+
 function setScreen(screenId){
   const screens = [
     '#screenMap','#screenCombat','#screenReward','#screenEvent','#screenEventPick',
@@ -192,6 +311,10 @@ function renderScreen(){
 
 function renderMap(){
   const run = STATE.run;
+  const visited = new Set(run?.visited_nodes || []);
+  const reachable = new Set((run?.room_choices || []).map(r=>r.id));
+  const current = run?.current_node;
+  const mapData = run?.path_map;
   const prog = $('#mapProgress');
   prog.innerHTML = '';
   for(let f=1; f<=10; f++){
@@ -201,6 +324,67 @@ function renderMap(){
     if([4,8,10].includes(f)) dot.classList.add('boss');
     dot.title = `Этаж ${f}`;
     prog.appendChild(dot);
+  }
+
+  const cols = $('#mapColumns');
+  const svg = $('#mapLinks');
+  cols.innerHTML = '';
+  svg.innerHTML = '';
+
+  if(mapData?.floors?.length){
+    const lanes = mapData.lanes || 5;
+    const colGap = 140;
+    const rowGap = 110;
+    const padX = 70;
+    const padY = 70;
+    const viewW = padX*2 + colGap * (mapData.floors.length - 1);
+    const viewH = padY*2 + rowGap * (lanes - 1);
+    svg.setAttribute('viewBox', `0 0 ${viewW} ${viewH}`);
+
+    const positions = new Map();
+    mapData.floors.forEach((layer, colIdx)=>{
+      layer.forEach(node=>{
+        const x = padX + colIdx * colGap;
+        const y = padY + (node.lane || 0) * rowGap;
+        positions.set(node.id, {x, y, node});
+        const el = document.createElement('div');
+        el.className = `mapNode type-${node.type}`;
+        if(node.type === 'boss') el.classList.add('boss');
+        if(visited.has(node.id)) el.classList.add('visited');
+        if(node.id === current) el.classList.add('current');
+        if(reachable.has(node.id)) el.classList.add('reachable');
+        else if(node.floor === run.floor) el.classList.add('locked');
+        el.innerHTML = `
+          <div class="nodeLabel">${escapeHtml(node.label)}</div>
+          <div class="nodeHint">${escapeHtml(node.hint)}</div>
+          <div class="nodeFloor">Этаж ${node.floor}</div>
+        `;
+        el.style.left = `${(x / viewW) * 100}%`;
+        el.style.top = `${(y / viewH) * 100}%`;
+        if(reachable.has(node.id)){
+          el.addEventListener('click', ()=> dispatch({type:'CHOOSE_ROOM', room_id: node.id}));
+        }
+        cols.appendChild(el);
+      });
+    });
+
+    for(const [id, pos] of positions.entries()){
+      const {x,y,node} = pos;
+      for(const nid of (node.next || [])){
+        const tgt = positions.get(nid);
+        if(!tgt) continue;
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x);
+        line.setAttribute('y1', y);
+        line.setAttribute('x2', tgt.x);
+        line.setAttribute('y2', tgt.y);
+        let cls = 'mapEdge';
+        if(visited.has(id) && (visited.has(nid) || current === nid)) cls += ' visited';
+        if(reachable.has(nid) && current === id) cls += ' active';
+        line.setAttribute('class', cls);
+        svg.appendChild(line);
+      }
+    }
   }
 
   const choices = $('#roomChoices');
@@ -300,6 +484,8 @@ function makeHandCard(card){
   wrap.dataset.uid = card.uid;
   wrap.dataset.target = card.target;
   wrap.dataset.tags = (card.tags||[]).join(',');
+  const canPlay = canAffordCard(card);
+  wrap.classList.toggle('noMana', !canPlay);
   wrap.innerHTML = `
     <div class="top">
       <div class="name">${escapeHtml(card.name)}</div>
@@ -312,7 +498,7 @@ function makeHandCard(card){
     </div>
     <div class="tags">${(card.tags||[]).slice(0,4).map(t=>`<span class="tag">${escapeHtml(tagToRu(t))}</span>`).join('')}</div>
   `;
-
+  attachCardTooltip(wrap, card.id, !!card.up, card);
   enableDragToPlay(wrap, card);
   return wrap;
 }
@@ -325,14 +511,37 @@ let DRAG = {
   targetType:null
 };
 
+function findCardInHand(uid){
+  return STATE?.run?.combat_view?.hand?.find(c=>c.uid === uid);
+}
+
+function canAffordCard(card){
+  if(!card) return true;
+  const mana = STATE?.run?.combat_view?.player?.mana ?? Infinity;
+  const cost = card?.eff_cost ?? card?.cost ?? 0;
+  return mana >= cost;
+}
+
+function setEnemiesTargetable(enabled, targetType){
+  const needsEnemy = targetType === 'enemy' || targetType === 'any' || targetType === 'all_enemies';
+  for(const e of $$('.entity.enemy')){
+    e.classList.toggle('targetable', !!enabled && needsEnemy);
+  }
+}
+
 function enableDragToPlay(cardEl, card){
   cardEl.addEventListener('pointerdown', (ev)=>{
     // только если бой и ход игрока
     if(STATE?.screen !== 'COMBAT') return;
+    if(!canAffordCard(card)){
+      toast('Не хватает маны.');
+      return;
+    }
     ev.preventDefault();
     DRAG.active = true;
     DRAG.uid = card.uid;
     DRAG.targetType = card.target;
+    hideCardTooltip();
 
     const ghost = cardEl.cloneNode(true);
     ghost.classList.add('dragging');
@@ -340,6 +549,8 @@ function enableDragToPlay(cardEl, card){
     DRAG.ghost = ghost;
 
     moveGhost(ev.clientX, ev.clientY);
+
+    setEnemiesTargetable(true, card.target);
 
     cardEl.setPointerCapture(ev.pointerId);
   });
@@ -369,6 +580,7 @@ function moveGhost(x,y){
 
 function highlightDropTargets(x,y){
   for(const e of $$('.entity.enemy')) e.classList.remove('dropTarget');
+  if(!(DRAG.targetType === 'enemy' || DRAG.targetType === 'any' || DRAG.targetType === 'all_enemies')) return;
   const el = document.elementFromPoint(x,y);
   const enemy = el?.closest?.('.entity.enemy');
   if(enemy) enemy.classList.add('dropTarget');
@@ -376,6 +588,13 @@ function highlightDropTargets(x,y){
 
 async function finalizeDrop(x,y){
   for(const e of $$('.entity.enemy')) e.classList.remove('dropTarget');
+  setEnemiesTargetable(false);
+
+  const view = findCardInHand(DRAG.uid);
+  if(view && !canAffordCard(view)){
+    toast('Не хватает маны.');
+    return;
+  }
 
   const el = document.elementFromPoint(x,y);
   const enemy = el?.closest?.('.entity.enemy');
@@ -408,6 +627,8 @@ function cleanupDrag(){
     DRAG.ghost = null;
   }
   for(const e of $$('.entity.enemy')) e.classList.remove('dropTarget');
+  setEnemiesTargetable(false);
+  hideCardTooltip();
 }
 
 // --- Reward ---
@@ -422,10 +643,10 @@ function renderReward(){
   }
 }
 
-function cardButton(cardId, upgraded, onClick){
+function cardButton(cardId, upgraded, onClick, fallback){
   const d = cardDefFromId(cardId, upgraded);
-  const fallback = {id:cardId,name:cardId,rarity:'common',type:'skill',cost:0,desc:''};
-  const c = d || fallback;
+  const fallbackDef = fallback || {id:cardId,name:cardId,rarity:'common',type:'skill',cost:0,desc:''};
+  const c = d || fallbackDef;
   const holder = document.createElement('div');
   holder.className = 'cardBtn';
   holder.innerHTML = '';
@@ -455,6 +676,7 @@ function cardButton(cardId, upgraded, onClick){
   `;
   holder.appendChild(cardEl);
   holder.addEventListener('click', onClick);
+  attachCardTooltip(holder, cardId, upgraded, c);
   return holder;
 }
 
@@ -726,9 +948,37 @@ function renderDeck(){
   const deck = $('#deckList');
   deck.innerHTML = '';
   const dv = run?.deck_view || [];
-  $('#deckCount').textContent = `${dv.length} карт`;
-  for(const c of dv){
-    deck.appendChild(cardButton(c.id, !!c.up, ()=>{}));
+  const tagSelect = $('#deckFilterTag');
+  const currentTag = tagSelect.value;
+  const tags = new Set(Object.keys(TAG_INFO));
+  dv.forEach(c=> (c.tags||[]).forEach(t=> tags.add(t)));
+  tagSelect.innerHTML = `<option value="">Все теги</option>` + Array.from(tags).sort().map(t=>`<option value="${t}">${escapeHtml(tagToRu(t))}</option>`).join('');
+  if(currentTag && tags.has(currentTag)) tagSelect.value = currentTag;
+
+  const rar = $('#deckFilterRarity').value;
+  const typ = $('#deckFilterType').value;
+  const tag = $('#deckFilterTag').value;
+  const sort = $('#deckSort').value;
+
+  const filtered = dv.filter(c=>{
+    if(rar && c.rarity !== rar) return false;
+    if(typ && c.type !== typ) return false;
+    if(tag && !(c.tags||[]).includes(tag)) return false;
+    return true;
+  });
+
+  const rarityOrder = {common:0, uncommon:1, rare:2, legendary:3};
+  const sorters = {
+    rarity:(a,b)=> (rarityOrder[a.rarity]-rarityOrder[b.rarity]) || a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
+    type:(a,b)=> a.type.localeCompare(b.type) || (a.cost - b.cost) || a.name.localeCompare(b.name),
+    cost:(a,b)=> (a.cost - b.cost) || a.name.localeCompare(b.name),
+  };
+  const sorted = filtered.slice();
+  if(sort !== 'default' && sorters[sort]) sorted.sort(sorters[sort]);
+
+  $('#deckCount').textContent = `${sorted.length}/${dv.length} карт`;
+  for(const c of sorted){
+    deck.appendChild(cardButton(c.id, !!c.up, ()=>{}, c));
   }
 }
 
@@ -773,6 +1023,10 @@ function wire(){
   // Deck
   $('#btnDeck').addEventListener('click', openDeck);
   $('#btnCloseDeck').addEventListener('click', ()=> show($('#overlayDeck'), false));
+  $('#deckFilterRarity').addEventListener('change', renderDeck);
+  $('#deckFilterType').addEventListener('change', renderDeck);
+  $('#deckFilterTag').addEventListener('change', renderDeck);
+  $('#deckSort').addEventListener('change', renderDeck);
 
   // Reward
   $('#btnSkipReward').addEventListener('click', ()=> dispatch({type:'PICK_REWARD', card_id: null}));

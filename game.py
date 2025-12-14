@@ -170,6 +170,14 @@ def continue_run(state: Dict[str, Any]) -> None:
         state["updated_at"] = now_ts()
         return
 
+    ensure_path_map(run)
+    node_ids = {n["id"] for layer in run["path_map"].get("floors", []) for n in layer}
+    if run.get("room_choices"):
+        if any(ch.get("id") not in node_ids for ch in run.get("room_choices", [])):
+            run["room_choices"] = map_room_choices(run)
+    if state.get("screen") == "MAP" and not run.get("room_choices"):
+        run["room_choices"] = map_room_choices(run)
+
     if state.get("screen") in ("VICTORY", "DEFEAT", "INHERIT"):
         # уважим финальные экраны, если вдруг их нужно показать повторно
         state["updated_at"] = now_ts()
@@ -306,6 +314,9 @@ def new_run(state: Dict[str, Any], *, keep_cards: Optional[List[Dict[str, Any]]]
         "event": None,
         "act_end": None,
         "inherit": None,
+        "path_map": None,
+        "visited_nodes": [],
+        "current_node": None,
     }
 
     # Наследование: заменим 3 «простых» карты на выбранные, но оставим 10 карт в старте.
@@ -329,6 +340,7 @@ def new_run(state: Dict[str, Any], *, keep_cards: Optional[List[Dict[str, Any]]]
         while len(run["deck"]) > 10:
             run["deck"].pop()
 
+    run["path_map"] = build_path_map(run)
     run["room_choices"] = generate_room_choices(run)
     state["run"] = run
     state["screen"] = "MAP"
@@ -336,51 +348,122 @@ def new_run(state: Dict[str, Any], *, keep_cards: Optional[List[Dict[str, Any]]]
     state["updated_at"] = now_ts()
 
 def generate_room_choices(run: Dict[str, Any]) -> List[Dict[str, Any]]:
-    rng = seeded_rng(run)
-    floor = int(run.get("floor", 1))
-    act = act_for_floor(floor)
-    run["act"] = act
+    ensure_path_map(run)
+    run["act"] = act_for_floor(int(run.get("floor", 1)))
+    return map_room_choices(run)
 
-    if is_boss_floor(floor):
-        return [{
-            "id": make_uid("room"),
-            "type": "boss",
-            "label": f"БОСС акта {act}",
-            "hint": "Огромная дверь. За ней — бухгалтерия боли.",
-        }]
 
-    # вес комнат меняется по актам
-    weights = {
-        "fight": 40,
-        "elite": 10 + 5*(act-1),
-        "event": 20,
-        "shop": 10,
-        "campfire": 10,
-        "chest": 10,
+def ensure_path_map(run: Dict[str, Any]) -> None:
+    if run.get("path_map"):
+        return
+    run["path_map"] = build_path_map(run, use_run_rng=False)
+    run.setdefault("visited_nodes", [])
+    run.setdefault("current_node", None)
+
+
+def room_label_and_hint(room_type: str, act: int) -> Tuple[str, str]:
+    label_map = {
+        "fight": "БОЙ",
+        "elite": "ЭЛИТА",
+        "event": "СОБЫТИЕ",
+        "shop": "ЛАВКА",
+        "campfire": "КОСТЁР",
+        "chest": "СУНДУК",
+        "boss": f"БОСС акта {act}",
     }
+    hint_map = {
+        "fight": "Запах металла и магии.",
+        "elite": "Тяжёлые шаги. И смех, как скрип.",
+        "event": "Случайность в тюрьме — всегда чья-то работа.",
+        "shop": "Тут всё продаётся, кроме свободы.",
+        "campfire": "Костёр без дыма. И без вопросов.",
+        "chest": "Щёлк. Пыль. Возможно, зубы.",
+        "boss": "Огромная дверь. За ней — бухгалтерия боли.",
+    }
+    return label_map.get(room_type, room_type), hint_map.get(room_type, "…")
 
-    # 3 варианта (пути) на этаж
-    choices = []
-    for i in range(3):
-        t = weighted_room(rng, weights)
-        label = {
-            "fight":"БОЙ",
-            "elite":"ЭЛИТА",
-            "event":"СОБЫТИЕ",
-            "shop":"ЛАВКА",
-            "campfire":"КОСТЁР",
-            "chest":"СУНДУК",
-        }[t]
-        hint = {
-            "fight":"Запах металла и магии.",
-            "elite":"Тяжёлые шаги. И смех, как скрип.",
-            "event":"Случайность в тюрьме — всегда чья-то работа.",
-            "shop":"Тут всё продаётся, кроме свободы.",
-            "campfire":"Костёр без дыма. И без вопросов.",
-            "chest":"Щёлк. Пыль. Возможно, зубы.",
-        }[t]
-        choices.append({"id": make_uid("room"), "type": t, "label": label, "hint": hint})
-    return choices
+
+def build_path_map(run: Dict[str, Any], *, use_run_rng: bool = True) -> Dict[str, Any]:
+    rng = seeded_rng(run) if use_run_rng else random.Random(int(run.get("seed", 12345)) ^ 0xC0FFEE)
+    lanes = 5
+    floors: List[List[Dict[str, Any]]] = []
+    prev_layer: List[Dict[str, Any]] = []
+
+    for floor in range(1, 11):
+        act = act_for_floor(floor)
+        is_boss = is_boss_floor(floor)
+        count = 1 if is_boss else rng.randint(3, 4)
+        positions = sorted(rng.sample(range(lanes), k=count)) if count < lanes else list(range(lanes))
+        layer: List[Dict[str, Any]] = []
+        for pos in positions:
+            rtype = "boss" if is_boss else weighted_room(rng, {
+                "fight": 42,
+                "elite": 10 + 5 * (act - 1),
+                "event": 18,
+                "shop": 8,
+                "campfire": 12,
+                "chest": 10,
+            })
+            label, hint = room_label_and_hint(rtype, act)
+            node = {
+                "id": make_uid("node"),
+                "type": rtype,
+                "label": label,
+                "hint": hint,
+                "floor": floor,
+                "lane": pos,
+                "prev": [],
+                "next": [],
+            }
+            layer.append(node)
+
+        # соединения со слоем сверху
+        if prev_layer:
+            for p in prev_layer:
+                target_pool = sorted(layer, key=lambda n: abs(n["lane"] - p["lane"]))
+                tcount = 1 if len(target_pool) == 1 else (2 if rng.random() < 0.55 else 1)
+                picks = rng.sample(target_pool[:min(len(target_pool), 3)], k=tcount)
+                for tgt in picks:
+                    p["next"].append(tgt["id"])
+                    tgt["prev"].append(p["id"])
+            # гарантируем, что у каждого есть хотя бы один вход
+            for tgt in layer:
+                if not tgt["prev"]:
+                    anchor = min(prev_layer, key=lambda p: abs(p["lane"] - tgt["lane"]))
+                    anchor["next"].append(tgt["id"])
+                    tgt["prev"].append(anchor["id"])
+
+        floors.append(layer)
+        prev_layer = layer
+
+    return {"floors": floors, "lanes": lanes}
+
+
+def map_room_choices(run: Dict[str, Any]) -> List[Dict[str, Any]]:
+    path = run.get("path_map") or {}
+    floors = path.get("floors", [])
+    floor = int(run.get("floor", 1))
+    prev_node_id = run.get("current_node")
+    idx = floor - 1
+    if not (0 <= idx < len(floors)):
+        return []
+
+    layer = floors[idx]
+    act = act_for_floor(floor)
+    options: List[Dict[str, Any]] = []
+    for node in layer:
+        if floor > 1 and prev_node_id and prev_node_id not in node.get("prev", []):
+            continue
+        label, hint = room_label_and_hint(node["type"], act)
+        options.append({
+            "id": node["id"],
+            "type": node["type"],
+            "label": label,
+            "hint": hint,
+            "floor": node["floor"],
+            "lane": node.get("lane", 0),
+        })
+    return options
 
 def weighted_room(rng: random.Random, weights: Dict[str, int]) -> str:
     total = sum(max(0, w) for w in weights.values())
@@ -1279,6 +1362,7 @@ def choose_room(state: Dict[str, Any], room_id: str) -> None:
     run = state["run"]
     if not run:
         return
+    ensure_path_map(run)
     choice = None
     for c in run.get("room_choices", []):
         if c["id"] == room_id:
@@ -1286,6 +1370,10 @@ def choose_room(state: Dict[str, Any], room_id: str) -> None:
             break
     if not choice:
         return
+    run.setdefault("visited_nodes", [])
+    if room_id not in run["visited_nodes"]:
+        run["visited_nodes"].append(room_id)
+    run["current_node"] = room_id
     run["room"] = choice
     t = choice["type"]
     if t in ("fight", "elite", "boss"):
@@ -1547,6 +1635,9 @@ def continue_endless(state: Dict[str, Any]) -> None:
     run["act"] = 1
     # подлечим чуть-чуть, чтобы не было мгновенной смерти
     run["hp"] = min(int(run["max_hp"]), int(run["hp"]) + 20)
+    run["visited_nodes"] = []
+    run["current_node"] = None
+    run["path_map"] = build_path_map(run)
     run["room_choices"] = generate_room_choices(run)
     state["screen"] = "MAP"
     state["ui"]["toast"] = f"Петля #{run['loop']}: этажи снова те же, но тьма глубже."
