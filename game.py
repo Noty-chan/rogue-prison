@@ -84,14 +84,13 @@ def card_cost(card_def: Dict[str, Any], inst: Dict[str, Any]) -> int:
 def crit_chance(player: Dict[str, Any]) -> float:
     base = float(player.get("crit", content.CRIT_BASE_CHANCE))
     bonus = 0.0
-    buffs = player.get("buffs", {})
-    if "crit_plus_10" in buffs: bonus += 0.10
-    if "crit_plus_15" in buffs: bonus += 0.15
-    if "crit_godmode" in buffs: bonus += 0.25
+    bonus += 0.10 * buff_count(player, "crit_plus_10")
+    bonus += 0.15 * buff_count(player, "crit_plus_15")
+    bonus += 0.25 * buff_count(player, "crit_godmode")
     return clamp(int((base + bonus) * 1000), 0, 1000) / 1000.0
 
 def crit_mult(player: Dict[str, Any]) -> float:
-    return 3.0 if "crit_godmode" in player.get("buffs", {}) else 2.0
+    return 2.0 + float(buff_count(player, "crit_godmode"))
 
 def status_get(ent: Dict[str, Any], status: str) -> int:
     return int(ent.get("statuses", {}).get(status, 0))
@@ -107,6 +106,10 @@ def status_set(ent: Dict[str, Any], status: str, stacks: int):
         ent["statuses"].pop(status, None)
     else:
         ent["statuses"][status] = int(stacks)
+
+
+def buff_count(ent: Dict[str, Any], buff: str) -> int:
+    return int(ent.get("buffs", {}).get(buff, 0))
 
 def status_dec(ent: Dict[str, Any], status: str, dec: int=1):
     s = status_get(ent, status) - dec
@@ -685,9 +688,9 @@ def deal_damage(combat: Dict[str, Any], attacker: Dict[str, Any], defender: Dict
 
     # отражение (только на игроке)
     if defender is combat.get("player"):
-        buffs = defender.get("buffs", {})
-        if "reflect_half_1turn" in buffs and taken > 0:
-            reflect = int(math.floor(taken * 0.5))
+        reflect_stacks = buff_count(defender, "reflect_half_1turn")
+        if reflect_stacks and taken > 0:
+            reflect = int(math.floor(taken * 0.5 * reflect_stacks))
             # отразим в «первого врага, кто атаковал» — caller должен корректно передать
             # Тут используем attacker если он враг
             if attacker is not defender:
@@ -747,9 +750,9 @@ def play_card(state: Dict[str, Any], card_uid: str, target: Optional[int]) -> No
 
     # хук: bounce_next (вернуть следующую сыгранную карту)
     bounced = False
-    if "bounce_next" in combat["player"].get("buffs", {}):
+    if buff_count(combat["player"], "bounce_next"):
         # этот баф потребляется, а карта вернётся в руку (кроме exhaust/upgrade)
-        combat["player"]["buffs"].pop("bounce_next", None)
+        consume_buff(combat["player"], "bounce_next", 1)
         bounced = True
 
     # применим эффекты
@@ -806,15 +809,20 @@ def resolve_card_effects(state: Dict[str, Any], combat: Dict[str, Any], inst: Di
             if was_crit and eff.get("on_crit"):
                 resolve_effect_list(state, combat, eff["on_crit"], p, target_ent)
             # buff: burn_on_hit
-            if target_ent and "burn_on_hit" in p.get("buffs", {}):
-                status_add(target_ent, "burn", 1)
-            if target_ent and "burn_on_hit_2" in p.get("buffs", {}):
-                status_add(target_ent, "burn", 2)
+            if target_ent:
+                burn_boost = buff_count(p, "burn_on_hit")
+                burn_boost_2 = buff_count(p, "burn_on_hit_2")
+                burn_total = burn_boost + (2 * burn_boost_2)
+                if burn_total:
+                    status_add(target_ent, "burn", burn_total)
             # echo_attack_half consumes once
-            if target_ent and "echo_attack_half" in p.get("buffs", {}):
-                p["buffs"].pop("echo_attack_half", None)
-                half = int(math.floor(base * 0.5))
-                deal_damage(combat, p, target_ent, half, allow_crit=False, source=cdef["name"]+" (эхо)")
+            if target_ent:
+                echo_stacks = buff_count(p, "echo_attack_half")
+                if echo_stacks:
+                    consume_buff(p, "echo_attack_half", echo_stacks)
+                    half = int(math.floor(base * 0.5))
+                    for _ in range(echo_stacks):
+                        deal_damage(combat, p, target_ent, half, allow_crit=False, source=cdef["name"]+" (эхо)")
         elif op == "aoe_damage":
             base = int(eff.get("amount", 0))
             bonus = 0
@@ -961,6 +969,19 @@ def add_buff(ent: Dict[str, Any], buff: str):
     ent.setdefault("buffs", {})
     ent["buffs"][buff] = int(ent["buffs"].get(buff, 0)) + 1
 
+
+def consume_buff(ent: Dict[str, Any], buff: str, amount: int = 1) -> int:
+    """Уменьшает стаки бафа и возвращает оставшееся количество."""
+    if amount <= 0:
+        return buff_count(ent, buff)
+    ent.setdefault("buffs", {})
+    cur = int(ent["buffs"].get(buff, 0))
+    if cur <= amount:
+        ent["buffs"].pop(buff, None)
+        return 0
+    ent["buffs"][buff] = cur - amount
+    return ent["buffs"][buff]
+
 def do_discard_random(combat: Dict[str, Any], n: int):
     rng = combat.get("_rng") or random.Random(0)
     hand = combat.get("hand", [])
@@ -980,21 +1001,24 @@ def do_discard_random(combat: Dict[str, Any], n: int):
 
 def trigger_on_discard(combat: Dict[str, Any], card_inst: Dict[str, Any]):
     p = combat["player"]
-    buffs = p.get("buffs", {})
-    if "mana_on_discard" in buffs:
-        p["mana"] += 1
-        log(combat, "Баф: сброс -> +1 мана.")
-    if "mana_block_on_discard" in buffs:
-        p["mana"] += 1
-        p["block"] += 1
-        log(combat, "Баф: сброс -> +1 мана и +1 Блок.")
-    if "draw_on_discard" in buffs:
-        draw_to_hand(combat, n=1, rng=combat["_rng"])
-        log(combat, "Баф: сброс -> добор 1.")
-    if "draw_block_on_discard" in buffs:
-        draw_to_hand(combat, n=1, rng=combat["_rng"])
-        p["block"] += 1
-        log(combat, "Баф: сброс -> добор 1 и +1 Блок.")
+    mana_on_discard = buff_count(p, "mana_on_discard")
+    if mana_on_discard:
+        p["mana"] += mana_on_discard
+        log(combat, f"Баф: сброс -> +{mana_on_discard} маны.")
+    mana_block_on_discard = buff_count(p, "mana_block_on_discard")
+    if mana_block_on_discard:
+        p["mana"] += mana_block_on_discard
+        p["block"] += mana_block_on_discard
+        log(combat, f"Баф: сброс -> +{mana_block_on_discard} мана и +{mana_block_on_discard} Блок.")
+    draw_on_discard = buff_count(p, "draw_on_discard")
+    if draw_on_discard:
+        draw_to_hand(combat, n=draw_on_discard, rng=combat["_rng"])
+        log(combat, f"Баф: сброс -> добор {draw_on_discard}.")
+    draw_block_on_discard = buff_count(p, "draw_block_on_discard")
+    if draw_block_on_discard:
+        draw_to_hand(combat, n=draw_block_on_discard, rng=combat["_rng"])
+        p["block"] += draw_block_on_discard
+        log(combat, f"Баф: сброс -> добор {draw_block_on_discard} и +{draw_block_on_discard} Блок.")
 
 # ---- pending выборы ----
 
@@ -1072,13 +1096,15 @@ def end_turn(state: Dict[str, Any]) -> None:
     p = combat["player"]
 
     # turn_end_player бафы
-    if "eclipse" in p.get("buffs", {}):
+    eclipse = buff_count(p, "eclipse")
+    if eclipse:
         for e in combat["enemies"]:
             if e["hp"] > 0:
-                status_add(e, "poison", 2)
-                status_add(e, "burn", 2)
-        log(combat, "Затмение: всем врагам +2 яд/+2 ожог.")
-    if "eclipse_plus" in p.get("buffs", {}):
+                status_add(e, "poison", 2 * eclipse)
+                status_add(e, "burn", 2 * eclipse)
+        log(combat, f"Затмение: всем врагам +{2 * eclipse} яд/+{2 * eclipse} ожог.")
+    eclipse_plus = buff_count(p, "eclipse_plus")
+    if eclipse_plus:
         for e in combat["enemies"]:
             if e["hp"] > 0:
                 status_add(e, "poison", 3)
@@ -1096,6 +1122,10 @@ def end_turn(state: Dict[str, Any]) -> None:
             if e["hp"] > 0:
                 status_add(e, "burn", 2 * stacks)
         log(combat, "Сердце феникса+: всем врагам +Ожог.")
+                status_add(e, "poison", 3 * eclipse_plus)
+                status_add(e, "burn", 3 * eclipse_plus)
+        log(combat, f"Затмение+: всем врагам +{3 * eclipse_plus} яд/+{3 * eclipse_plus} ожог.")
+
 
     # burn tick на игроке (конец хода игрока)
     tick_burn(combat, p, owner="player")
@@ -1142,10 +1172,11 @@ def start_player_turn(state: Dict[str, Any]) -> None:
 
     # мана: refill
     p["mana"] = int(p.get("mana_max", 3))
-    # battery: в начале хода +1 мана
-    if "battery" in p.get("buffs", {}) or "battery_plus" in p.get("buffs", {}):
-        p["mana"] += 1
-        log(combat, "Батарея: +1 мана в начале хода.")
+    # battery: в начале хода +1 мана за стак
+    battery_stacks = buff_count(p, "battery") + buff_count(p, "battery_plus")
+    if battery_stacks:
+        p["mana"] += battery_stacks
+        log(combat, f"Батарея: +{battery_stacks} маны в начале хода.")
 
     # ward: блок в начале хода
     if "ward_small" in p.get("buffs", {}):
@@ -1178,6 +1209,12 @@ def start_player_turn(state: Dict[str, Any]) -> None:
     if regen_block > 0:
         p["block"] += regen_block
         log(combat, f"Регенерация: +{regen_block} Блока.")
+    ward_small = buff_count(p, "ward_small")
+    ward_medium = buff_count(p, "ward_medium")
+    if ward_small:
+        p["block"] += 2 * ward_small
+    if ward_medium:
+        p["block"] += 3 * ward_medium
 
     # добор до 6
     draw_to_hand(combat, n=6 - len(combat["hand"]), rng=rng)
@@ -1302,20 +1339,13 @@ def tick_burn(combat: Dict[str, Any], ent: Dict[str, Any], owner: str):
     if s <= 0:
         return
     # burn_boost: +1 dmg per stack
-    dmg = s
-    if owner == "enemy":
-        # у врагов может гореть сильнее, если игрок взял контракт
-        if "burn_boost" in combat["player"].get("buffs", {}):
-            dmg = s + 1
-    else:
-        if "burn_boost" in combat["player"].get("buffs", {}):
-            dmg = s + 1
+    dmg = s + buff_count(combat.get("player", {}), "burn_boost")
     ent["hp"] = max(0, int(ent["hp"]) - dmg)
     log(combat, f"Ожог: {dmg} урона.")
     # decay
     if owner == "enemy":
         # чуть медленнее при burn_boost: у врага не уменьшается на его ходу (иронично), а уменьшится в начале хода игрока? упростим: уменьшается всё равно, но медленнее
-        if "burn_boost" in combat["player"].get("buffs", {}):
+        if buff_count(combat.get("player", {}), "burn_boost"):
             if s >= 2:
                 status_dec(ent, "burn", 0)  # не уменьшаем
             else:
