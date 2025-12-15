@@ -108,12 +108,16 @@ def api_content():
         base = content.get_card_def(c["id"], upgraded=False)
         up = content.get_card_def(c["id"], upgraded=True)
         cards.append({"base": base, "up": up})
+    for c in content.CURSES:
+        base = content.get_card_def(c["id"], upgraded=False)
+        cards.append({"base": base, "up": base})
     return jsonify({
         "cards": cards,
         "rarities": content.RARITIES,
         "card_types": content.CARD_TYPES,
         "statuses": content.STATUSES,
         "buffs": content.BUFFS,
+        "relics": content.RELICS,
     })
 
 @app.get("/api/ping")

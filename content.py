@@ -6,7 +6,7 @@ from typing import Dict, List, Any, Optional
 import random
 
 RARITIES = ["common", "uncommon", "rare", "legendary"]
-CARD_TYPES = ["attack", "defense", "skill", "upgrade"]
+CARD_TYPES = ["attack", "defense", "skill", "upgrade", "curse"]
 
 # Вероятности выпадения в наградах/магазине (приблизительно, как в StS-стиле).
 RARITY_WEIGHTS = {
@@ -34,8 +34,9 @@ def _c(
     desc_up: Optional[str] = None,
     cost_up: Optional[int] = None,
     effects_up: Optional[List[dict]] = None,
+    extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    return {
+    data = {
         "id": cid,
         "name": name,
         "rarity": rarity,
@@ -53,6 +54,9 @@ def _c(
         "cost_up": cost_up,
         "effects_up": effects_up,
     }
+    if extra:
+        data.update(extra)
+    return data
 
 # --------------------------
 # 70 карт: 28/21/14/7
@@ -460,9 +464,54 @@ assert _counts["legendary"] == 7, f"legendary should be 7, got {_counts['legenda
 
 CARD_INDEX: Dict[str, Dict[str, Any]] = {c["id"]: c for c in CARDS}
 
+# --- CURSES (отдельно от обычного пула) ---
+CURSES: List[Dict[str, Any]] = [
+    _c(
+        "CURSE_BLOOD_DEBT",
+        "Кровавый долг",
+        "curse",
+        "curse",
+        0,
+        "none",
+        "Проклятье. Неиграбельна. В конце хода потеряй 2 HP.",
+        [],
+        tags=["curse"],
+        extra={"curse_effect": {"lose_hp": 2}},
+    ),
+    _c(
+        "CURSE_NUMBING_RUST",
+        "Глухая ржавчина",
+        "curse",
+        "curse",
+        0,
+        "none",
+        "Проклятье. В конце хода получи 1 Слабость на следующий ход.",
+        [],
+        tags=["curse"],
+        extra={"curse_effect": {"apply_status": {"status": "weak", "stacks": 1}}},
+    ),
+    _c(
+        "CURSE_WEIGHTED_CHAIN",
+        "Утяжелённая цепь",
+        "curse",
+        "curse",
+        0,
+        "none",
+        "Проклятье. Забивает руку: следующий добор на 1 карту меньше.",
+        [],
+        tags=["curse"],
+        extra={"curse_effect": {"next_draw_penalty": 1}},
+    ),
+]
+
+CURSE_INDEX: Dict[str, Dict[str, Any]] = {c["id"]: c for c in CURSES}
+
 def get_card_def(card_id: str, upgraded: bool=False) -> Dict[str, Any]:
     """Вернёт копию описания карты с учётом апгрейда (+)."""
-    base = dict(CARD_INDEX[card_id])
+    base_src = CARD_INDEX.get(card_id) or CURSE_INDEX.get(card_id)
+    if not base_src:
+        raise KeyError(card_id)
+    base = dict(base_src)
     if upgraded:
         if base.get("desc_up"): base["desc"] = base["desc_up"]
         if base.get("cost_up") is not None: base["cost"] = base["cost_up"]
@@ -525,6 +574,19 @@ STATUSES: Dict[str, Dict[str, Any]] = {
     "freeze": {"name":"Заморозка", "desc":"-25% урона и шанс пропустить ход."},
     "thorns": {"name":"Шипы", "desc":"Когда тебя бьют, отражаешь урон = стаки."},
 }
+
+# --------------------------
+# Реликвии (мета-прогрессия)
+# --------------------------
+RELICS: List[Dict[str, Any]] = [
+    {"id": "STARTER_SEAL", "name": "Печать заключённого", "desc": "Стартовый талисман: +1 макс. маны в бою."},
+    {"id": "RAT_POUCH", "name": "Кошель крысолова", "desc": "После каждого боя получай +6 жетонов."},
+    {"id": "ECHO_CORE", "name": "Ядро эха", "desc": "Награда за бой предлагает на 1 карту больше."},
+    {"id": "BLOOD_VIAL", "name": "Сосуд крови", "desc": "В начале боя лечишься на 5 HP."},
+    {"id": "WARDENS_COMPASS", "name": "Компас надзирателя", "desc": "Каждый сундук даёт реликвию, но часто с проклятьем."},
+]
+
+RELIC_INDEX: Dict[str, Dict[str, Any]] = {r["id"]: r for r in RELICS}
 
 # --------------------------
 # Враги
@@ -731,6 +793,16 @@ EVENTS: List[Dict[str, Any]] = [
             {"id":"BLESS", "label":"Принести жертву (-8 HP, получить легендарную карту)", "effect":{"op":"combo","steps":[{"op":"lose_hp","amount":8},{"op":"event_gain_card","rarity":"legendary","n":1}]}},
             {"id":"PRAY", "label":"Попросить по-маленькому (получить uncommon карту)", "effect":{"op":"event_gain_card","rarity":"uncommon","n":1}},
             {"id":"LEAVE", "label":"Отойти прочь", "effect":{"op":"noop"}},
+        ],
+    },
+    {
+        "id": "EVENT_CURSED_CACHE",
+        "name": "Камера проклятых трофеев",
+        "desc": "Полка блестит реликвиями, но воздух тяжёлый от шёпота.",
+        "options": [
+            {"id":"GRAB", "label":"Схватить сияющую реликвию (получить реликвию и проклятье)", "effect":{"op":"combo","steps":[{"op":"event_gain_relic"},{"op":"event_gain_curse"}]}},
+            {"id":"PURIFY", "label":"Сжечь мерзость (-8 HP, удалить карту)", "effect":{"op":"combo","steps":[{"op":"lose_hp","amount":8},{"op":"event_remove_card","n":1}]}},
+            {"id":"LEAVE", "label":"Не тревожить", "effect":{"op":"noop"}},
         ],
     },
 ]
