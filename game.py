@@ -1412,6 +1412,11 @@ def enemy_turn(state: Dict[str, Any]) -> None:
         if e["hp"] > 0:
             tick_poison(combat, e, owner="enemy")
 
+    # если все умерли от DoT — победа
+    if all(e["hp"] <= 0 for e in enemies):
+        win_combat(state)
+        return
+
     # враги действуют
     for e in enemies:
         if e["hp"] <= 0:
@@ -1480,6 +1485,11 @@ def enemy_turn(state: Dict[str, Any]) -> None:
 
         # intent на следующий ход
         choose_intent(e, rng)
+
+        # проверка победы, если враг умер от дотов/реактивных эффектов
+        if all(en["hp"] <= 0 for en in enemies):
+            win_combat(state)
+            return
 
     # блок врагов обнуляется после их хода (как «снятие блока» в начале их следующего, упрощение)
     for e in enemies:
