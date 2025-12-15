@@ -76,6 +76,51 @@ def make_card_instance(card_id: str, upgraded: bool=False) -> Dict[str, Any]:
         "note": "",
     }
 
+def add_card_to_deck(run: Dict[str, Any], card_id: str, upgraded: bool=False) -> Dict[str, Any]:
+    inst = make_card_instance(card_id, upgraded)
+    run.setdefault("deck", []).append(inst)
+    return inst
+
+def ensure_rarity_pity(run: Dict[str, Any]) -> Dict[str, int]:
+    rp = run.get("rarity_pity") or {}
+    run["rarity_pity"] = {
+        "rare": int(rp.get("rare", 0)),
+        "legendary": int(rp.get("legendary", 0)),
+    }
+    return run["rarity_pity"]
+
+def roll_card_rarity(run: Dict[str, Any], rng: random.Random) -> str:
+    pity = ensure_rarity_pity(run)
+    pity["rare"] += 1
+    pity["legendary"] += 1
+    w = dict(content.RARITY_WEIGHTS)
+    floor = int(run.get("floor", 1))
+    # Немного повышаем редкие карты по мере прогресса
+    w["uncommon"] += max(0, floor // 2)
+    w["rare"] += max(3, floor - 1)
+    w["legendary"] += max(1, floor // 3)
+    # гарантии после долгого отсутствия
+    if pity["rare"] >= 4:
+        w["rare"] += 25
+    if pity["legendary"] >= 7:
+        w["legendary"] += 12
+    pick = content.weighted_choice(rng, [{"r": r, "w": w[r]} for r in content.RARITIES], "w")["r"]
+    if pick == "rare":
+        pity["rare"] = 0
+    if pick == "legendary":
+        pity["legendary"] = 0
+    return pick
+
+def generate_card_choices(run: Dict[str, Any], rng: random.Random, k: int = 3) -> List[str]:
+    rarities = [roll_card_rarity(run, rng) for _ in range(k)]
+    if not any(r in ("uncommon", "rare", "legendary") for r in rarities):
+        rarities[-1] = "uncommon"
+    ids: List[str] = []
+    for r in rarities:
+        pool = [c for c in content.CARDS if c["rarity"] == r]
+        ids.append(rng.choice(pool)["id"])
+    return ids
+
 def card_cost(card_def: Dict[str, Any], inst: Dict[str, Any]) -> int:
     base = int(card_def["cost"])
     mod = int(inst.get("temp_cost_mod", 0))
@@ -308,6 +353,7 @@ def new_run(state: Dict[str, Any], *, keep_cards: Optional[List[Dict[str, Any]]]
         "gold": 60,
         "max_hp": 70,
         "hp": 70,
+        "rarity_pity": {"rare": 0, "legendary": 0},
         "deck": starter_deck(),
         "combat": None,
         "room": None,
@@ -478,6 +524,28 @@ def weighted_room(rng: random.Random, weights: Dict[str, int]) -> str:
             return k
     return "fight"
 
+# ---- особые комнатные события ----
+
+ROOM_TWISTS = [
+    {"id": "TWIST_POISON_FOG", "name": "Токсичная вентиляция", "desc": "Ядовитый туман пропитывает комнату.", "poison_on_start": 2, "hp_ping": 2},
+    {"id": "TWIST_MIRROR_ECHO", "name": "Зеркальный резонанс", "desc": "Стены отражают заклинания и награды.", "start_reflect": True, "extra_reward": True},
+    {"id": "TWIST_CONTRABAND", "name": "Контрабанда", "desc": "Крысы проносят монеты и скидки.", "shop_discount": 0.8, "bonus_gold": 12},
+]
+
+def maybe_roll_room_twist(state: Dict[str, Any], room_type: str) -> Optional[Dict[str, Any]]:
+    run = state["run"]
+    rng = seeded_rng(run)
+    if rng.random() >= 0.5:
+        run.pop("room_twist", None)
+        return None
+    twist = deep(rng.choice(ROOM_TWISTS))
+    run["room_twist"] = twist
+    if room_type not in ("fight", "elite", "boss") and twist.get("hp_ping"):
+        run["hp"] = max(1, int(run.get("hp", 0)) - int(twist.get("hp_ping", 0)))
+    state.setdefault("ui", {})
+    state["ui"]["toast"] = f"Особое событие: {twist['name']} — {twist['desc']}"
+    return twist
+
 # ---- бой ----
 
 def start_combat(state: Dict[str, Any], room_type: str) -> None:
@@ -547,6 +615,18 @@ def start_combat(state: Dict[str, Any], room_type: str) -> None:
 
     # Старт: добор до 6
     draw_to_hand(combat, n=6, rng=rng)
+
+    twist = run.get("room_twist")
+    if twist:
+        if twist.get("poison_on_start"):
+            stacks = int(twist.get("poison_on_start", 0))
+            status_add(player, "poison", stacks)
+            for e in combat["enemies"]:
+                status_add(e, "poison", stacks)
+            log(combat, f"{twist['name']}: все получают {stacks} Яда.")
+        if twist.get("start_reflect"):
+            add_buff(player, "reflect_half_1turn")
+            log(combat, f"{twist['name']}: твоё первое попадание отражает урон.")
 
     log(combat, f"Этаж {run['floor']}, акт {run['act']}. В бой!")
     run["combat"] = combat
@@ -672,7 +752,8 @@ def deal_damage(combat: Dict[str, Any], attacker: Dict[str, Any], defender: Dict
             is_crit = True
             dmg = int(round(dmg * crit_mult(attacker)))
 
-    dmg = compute_damage(attacker, defender, dmg)
+    incoming = compute_damage(attacker, defender, dmg)
+    dmg = incoming
 
     # блок
     block = int(defender.get("block", 0))
@@ -688,14 +769,14 @@ def deal_damage(combat: Dict[str, Any], attacker: Dict[str, Any], defender: Dict
 
     # отражение (только на игроке)
     if defender is combat.get("player"):
-        reflect_stacks = buff_count(defender, "reflect_half_1turn")
-        if reflect_stacks and taken > 0:
-            reflect = int(math.floor(taken * 0.5 * reflect_stacks))
-            # отразим в «первого врага, кто атаковал» — caller должен корректно передать
-            # Тут используем attacker если он враг
-            if attacker is not defender:
+        half_reflect = buff_count(defender, "reflect_half_1turn")
+        full_reflect = buff_count(defender, "reflect_full_1turn")
+        if (half_reflect or full_reflect) and incoming > 0:
+            mult = 1.0 if full_reflect else 0.5 * half_reflect
+            reflect = int(math.floor(incoming * mult))
+            if attacker is not defender and reflect > 0:
                 attacker["hp"] = max(0, int(attacker.get("hp", 0)) - reflect)
-                log(combat, f"Зеркальный барьер отражает {reflect} урона.")
+                log(combat, f"Зеркальная защита отражает {reflect} урона.")
 
     if source:
         log(combat, f"{source}: {dmg}{' (КРИТ!)' if is_crit else ''}")
@@ -1107,9 +1188,9 @@ def end_turn(state: Dict[str, Any]) -> None:
     if eclipse_plus:
         for e in combat["enemies"]:
             if e["hp"] > 0:
-                status_add(e, "poison", 3)
-                status_add(e, "burn", 3)
-        log(combat, "Затмение+: всем врагам +3 яд/+3 ожог.")
+                status_add(e, "poison", 3 * eclipse_plus)
+                status_add(e, "burn", 3 * eclipse_plus)
+        log(combat, f"Затмение+: всем врагам +{3 * eclipse_plus} яд/+{3 * eclipse_plus} ожог.")
     if "phoenix_heart" in p.get("buffs", {}):
         stacks = int(p["buffs"].get("phoenix_heart", 1))
         for e in combat["enemies"]:
@@ -1122,9 +1203,18 @@ def end_turn(state: Dict[str, Any]) -> None:
             if e["hp"] > 0:
                 status_add(e, "burn", 2 * stacks)
         log(combat, "Сердце феникса+: всем врагам +Ожог.")
-                status_add(e, "poison", 3 * eclipse_plus)
-                status_add(e, "burn", 3 * eclipse_plus)
-        log(combat, f"Затмение+: всем врагам +{3 * eclipse_plus} яд/+{3 * eclipse_plus} ожог.")
+    venom = buff_count(p, "venom_rain")
+    if venom:
+        for e in combat["enemies"]:
+            if e["hp"] > 0:
+                status_add(e, "poison", 2 * venom)
+        log(combat, f"Ядовитая призма: всем врагам +{2 * venom} Яда.")
+    venom_plus = buff_count(p, "venom_rain_plus")
+    if venom_plus:
+        for e in combat["enemies"]:
+            if e["hp"] > 0:
+                status_add(e, "poison", 3 * venom_plus)
+        log(combat, f"Ядовитая призма+: всем врагам +{3 * venom_plus} Яда.")
 
 
     # burn tick на игроке (конец хода игрока)
@@ -1164,6 +1254,9 @@ def start_player_turn(state: Dict[str, Any]) -> None:
     combat["turn"] += 1
 
     p = combat["player"]
+    # одноходовые отражения очищаются к новому ходу
+    p.get("buffs", {}).pop("reflect_half_1turn", None)
+    p.get("buffs", {}).pop("reflect_full_1turn", None)
     # блок обнуляется в начале своего хода (как в StS)
     p["block"] = 0
 
@@ -1326,12 +1419,17 @@ def tick_poison(combat: Dict[str, Any], ent: Dict[str, Any], owner: str):
         return
     ent["hp"] = max(0, int(ent["hp"]) - s)
     log(combat, f"Яд: {s} урона.")
-    # decay unless buff poison_no_decay (на игроке в первую очередь)
+    # decay unless бафы запрещают уменьшение
+    no_decay = (
+        "poison_no_decay" in combat.get("player", {}).get("buffs", {})
+        or "venom_rain" in combat.get("player", {}).get("buffs", {})
+        or "venom_rain_plus" in combat.get("player", {}).get("buffs", {})
+    )
     if owner == "enemy":
-        # у врагов яд всегда уменьшается
-        status_dec(ent, "poison", 1)
+        if not no_decay:
+            status_dec(ent, "poison", 1)
     else:
-        if "poison_no_decay" not in combat["player"].get("buffs", {}):
+        if not no_decay:
             status_dec(ent, "poison", 1)
 
 def tick_burn(combat: Dict[str, Any], ent: Dict[str, Any], owner: str):
@@ -1379,8 +1477,12 @@ def win_combat(state: Dict[str, Any]) -> None:
     gain = base + rng.randint(0, 10)
     run["gold"] += gain
 
-    # награда: 3 карты
-    reward_cards = content.random_card_reward(rng, k=3)
+    twist = run.get("room_twist")
+    extra_cards = 1 if twist and twist.get("extra_reward") else 0
+    # награда: 3 карты (+twist)
+    reward_cards = generate_card_choices(run, rng, k=3 + extra_cards)
+    if twist and twist.get("bonus_gold"):
+        gain += int(twist.get("bonus_gold", 0))
     run["reward"] = {
         "type": "card_pick",
         "cards": reward_cards,
@@ -1407,6 +1509,7 @@ def complete_floor_and_continue(state: Dict[str, Any]) -> None:
     run = state["run"]
     if not run:
         return
+    run.pop("room_twist", None)
     # босс-этаж? тогда акт-эндвью
     floor = int(run["floor"])
     if is_boss_floor(floor):
@@ -1453,6 +1556,7 @@ def choose_room(state: Dict[str, Any], room_id: str) -> None:
     run["current_node"] = room_id
     run["room"] = choice
     t = choice["type"]
+    twist = maybe_roll_room_twist(state, t)
     if t in ("fight", "elite", "boss"):
         start_combat(state, t)
     elif t == "event":
@@ -1469,7 +1573,7 @@ def pick_reward_card(state: Dict[str, Any], card_id: Optional[str]) -> None:
     if not run or not run.get("reward"):
         return
     if card_id:
-        run["deck"].append(make_card_instance(card_id, upgraded=False))
+        add_card_to_deck(run, card_id, upgraded=False)
         state["ui"]["toast"] = f"Карта добавлена: {content.get_card_def(card_id)['name']}"
     else:
         state["ui"]["toast"] = "Награда пропущена."
@@ -1517,24 +1621,39 @@ def apply_event_effect(state: Dict[str, Any], eff: Dict[str, Any]) -> None:
         n = int(eff.get("n", 1))
         ids = content.sample_cards(rng, rarity=rarity, k=n)
         for cid in ids:
-            run["deck"].append(make_card_instance(cid, False))
+            add_card_to_deck(run, cid, False)
         state["ui"]["toast"] = f"+{n} карта(ы): {rarity}."
     elif op == "event_remove_card":
         n = int(eff.get("n", 1))
-        # удалим из 4 случайных (как акт-энд)
         picks = rng.sample(run["deck"], k=min(4, len(run["deck"])))
         run["event_pick"] = {"type":"remove", "choices":[{"uid":c["uid"],"id":c["id"],"up":c.get("up",False)} for c in picks], "n": n}
         state["screen"] = "EVENT_PICK"
         state["ui"]["toast"] = "Выбери карту для удаления."
     elif op == "event_upgrade_card":
         picks = rng.sample(run["deck"], k=min(4, len(run["deck"])))
-        run["event_pick"] = {"type":"upgrade", "choices":[{"uid":c["uid"],"id":c["id"],"up":c.get("up",False)} for c in picks], "n": 1}
+        run["event_pick"] = {"type":"upgrade", "choices":[{"uid":c["uid"],"id":c["id"],"up":c.get("up",False)} for c in picks],"n": 1}
         state["screen"] = "EVENT_PICK"
         state["ui"]["toast"] = "Выбери карту для улучшения."
     elif op == "lose_hp":
         amt = int(eff.get("amount", 0))
         run["hp"] = max(1, int(run["hp"]) - amt)
         state["ui"]["toast"] = f"-{amt} HP."
+    elif op == "heal":
+        amt = int(eff.get("amount", 0))
+        before = int(run.get("hp", 0))
+        run["hp"] = min(int(run["max_hp"]), before + amt)
+        healed = run["hp"] - before
+        state["ui"]["toast"] = f"Исцеление {healed} HP." if healed > 0 else "Ничего не изменилось."
+    elif op == "gain_gold":
+        delta = int(eff.get("amount", 0))
+        before = int(run.get("gold", 0))
+        run["gold"] = max(0, before + delta)
+        state["ui"]["toast"] = f"Изменение золота: {delta:+d}."
+    elif op == "gain_max_hp":
+        amt = int(eff.get("amount", 0))
+        run["max_hp"] = max(1, int(run.get("max_hp", 0)) + amt)
+        run["hp"] = min(run["max_hp"], int(run.get("hp", 0)) + amt)
+        state["ui"]["toast"] = f"Макс. HP увеличено на {amt}."
     elif op == "combo":
         for step in eff.get("steps", []):
             apply_event_effect(state, step)
@@ -1563,10 +1682,14 @@ def resolve_event_pick(state: Dict[str, Any], uid: str) -> None:
 def start_shop(state: Dict[str, Any]) -> None:
     run = state["run"]
     rng = seeded_rng(run)
+    twist = run.get("room_twist")
+    discount = float(twist.get("shop_discount", 1.0)) if twist else 1.0
+    extra_offer = 1 if twist and twist.get("shop_discount") else 0
     offers = []
-    for _ in range(3):
-        cid = content.random_card_reward(rng, k=1)[0]
+    for _ in range(3 + extra_offer):
+        cid = generate_card_choices(run, rng, k=1)[0]
         price = 40 if content.CARD_INDEX[cid]["rarity"]=="common" else 65 if content.CARD_INDEX[cid]["rarity"]=="uncommon" else 95 if content.CARD_INDEX[cid]["rarity"]=="rare" else 140
+        price = max(10, int(round(price * discount)))
         offers.append({"card_id": cid, "price": price})
     run["shop"] = {
         "offers": offers,
@@ -1592,7 +1715,7 @@ def shop_buy(state: Dict[str, Any], what: str, idx: Optional[int]=None) -> None:
             state["ui"]["toast"] = "Не хватает жетонов."
             return
         run["gold"] -= item["price"]
-        run["deck"].append(make_card_instance(item["card_id"], False))
+        add_card_to_deck(run, item["card_id"], False)
         offers.pop(idx)
         state["ui"]["toast"] = "Куплено."
     elif what == "remove":
@@ -1660,8 +1783,8 @@ def open_chest(state: Dict[str, Any]) -> None:
     gold = 35 + rng.randint(0, 25)
     run["gold"] += gold
     # шанс на редкую карту
-    cid = content.random_card_reward(rng, k=1)[0]
-    run["deck"].append(make_card_instance(cid, False))
+    cid = generate_card_choices(run, rng, k=1)[0]
+    add_card_to_deck(run, cid, False)
     state["ui"]["toast"] = f"Сундук: +{gold} жетонов и карта."
     complete_floor_and_continue(state)
 
@@ -1676,7 +1799,7 @@ def act_end_select(state: Dict[str, Any], kind: str, uid: str) -> None:
         # найдём карту в колоде
         src = next((c for c in run["deck"] if c["uid"] == uid), None)
         if src:
-            run["deck"].append(make_card_instance(src["id"], bool(src.get("up", False))))
+            add_card_to_deck(run, src["id"], bool(src.get("up", False)))
             ae["dup_done"] = True
             state["ui"]["toast"] = "Карта продублирована."
     if kind == "rem" and not ae.get("rem_done"):
