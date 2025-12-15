@@ -559,6 +559,8 @@ BUFFS: Dict[str, Dict[str, Any]] = {
     "phoenix_heart_plus": {"name":"Сердце феникса+", "desc":"Начало хода: лечишься на 7 и накладываешь 2 Ожога всем врагам.", "hooks":["turn_start_player","turn_end_player"]},
     "venom_rain": {"name":"Ядовитая призма", "desc":"Конец хода: всем врагам +2 Яда. Яд не уменьшается.", "hooks":["turn_end_player","dot_tick_poison"]},
     "venom_rain_plus": {"name":"Ядовитая призма+", "desc":"Конец хода: всем врагам +3 Яда. Яд не уменьшается.", "hooks":["turn_end_player","dot_tick_poison"]},
+    "arcane_charge": {"name":"Арканный заряд", "desc":"Следующая атака врага наносит на 15% больше урона.", "hooks":[]},
+    "arcane_overdrive": {"name":"Перегрузка архимага", "desc":"Атаки врага усиливаются и частично пробивают блок.", "hooks":[]},
 }
 
 # --------------------------
@@ -591,8 +593,19 @@ RELIC_INDEX: Dict[str, Dict[str, Any]] = {r["id"]: r for r in RELICS}
 # --------------------------
 # Враги
 # --------------------------
-def _enemy(eid: str, name: str, max_hp: int, moves: List[dict], tags: Optional[List[str]]=None) -> Dict[str, Any]:
-    return {"id": eid, "name": name, "max_hp": max_hp, "moves": moves, "tags": tags or []}
+def _enemy(
+    eid: str,
+    name: str,
+    max_hp: int,
+    moves: List[dict],
+    tags: Optional[List[str]] = None,
+    *,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    data = {"id": eid, "name": name, "max_hp": max_hp, "moves": moves, "tags": tags or []}
+    if extra:
+        data.update(extra)
+    return data
 
 ENEMIES: List[Dict[str, Any]] = []
 
@@ -602,47 +615,47 @@ ENEMIES += [
         {"id":"BITE","name":"Укус", "type":"attack", "dmg":6, "w":3},
         {"id":"SPIT","name":"Ядовитый плевок", "type":"attack_apply", "dmg":4, "status":"poison", "stacks":2, "w":2},
         {"id":"SKITTER","name":"Суета", "type":"block", "block":6, "w":1},
-    ], tags=["poison"]),
+    ], tags=["poison"], extra={"tier": 1}),
     _enemy("CHAIN_GUARD", "Цепной страж", 34, [
         {"id":"SMASH","name":"Удар цепью", "type":"attack", "dmg":8, "w":3},
         {"id":"TAUNT","name":"Насмешка", "type":"apply", "status":"weak", "stacks":2, "w":2},
         {"id":"PLATE","name":"Пластина", "type":"block", "block":8, "w":1},
-    ], tags=["control"]),
+    ], tags=["control"], extra={"tier": 1}),
     _enemy("EMBER_IMP", "Угольно-имп", 24, [
         {"id":"FIREBOLT","name":"Огненный болт", "type":"attack_apply", "dmg":5, "status":"burn", "stacks":2, "w":3},
         {"id":"CACKLE","name":"Хохот", "type":"apply", "status":"vulnerable", "stacks":1, "w":1},
         {"id":"SMOKE","name":"Дымка", "type":"block", "block":5, "w":1},
-    ], tags=["burn"]),
+    ], tags=["burn"], extra={"tier": 1}),
     _enemy("SKELETON_CLERK", "Скелет-делопроизводитель", 30, [
         {"id":"STAMP","name":"Печать", "type":"attack", "dmg":7, "w":3},
         {"id":"PAPER_CUT","name":"Бумажный порез", "type":"attack_apply", "dmg":3, "status":"bleed", "stacks":2, "w":2},
         {"id":"AUDIT","name":"Проверка", "type":"apply", "status":"weak", "stacks":1, "w":1},
-    ], tags=["bleed"]),
+    ], tags=["bleed"], extra={"tier": 1}),
     _enemy("ICE_WRAITH", "Ледяной призрак", 26, [
         {"id":"CHILL","name":"Холод", "type":"apply", "status":"freeze", "stacks":2, "w":3},
         {"id":"SLASH","name":"Ледяной рез", "type":"attack", "dmg":6, "w":2},
         {"id":"FADE","name":"Истаять", "type":"block", "block":7, "w":1},
-    ], tags=["freeze"]),
+    ], tags=["freeze"], extra={"tier": 1}),
     _enemy("HEX_LAWYER", "Адвокат проклятий", 32, [
         {"id":"OBJECTION","name":"Возражение!", "type":"attack", "dmg":6, "w":2},
         {"id":"CLAUSE","name":"Пункт договора", "type":"apply", "status":"vulnerable", "stacks":2, "w":2},
         {"id":"FINE","name":"Штраф", "type":"attack", "dmg":9, "w":1},
-    ], tags=["control"]),
+    ], tags=["control"], extra={"tier": 2}),
     _enemy("MANA_LEECH", "Манопиявка", 26, [
         {"id":"SIP","name":"Соснуть силы", "type":"attack", "dmg":5, "w":3},
         {"id":"DRAIN","name":"Манослив", "type":"apply", "status":"weak", "stacks":2, "w":2},
         {"id":"FUMES","name":"Тюремные испарения", "type":"apply_all", "status":"poison", "stacks":1, "w":1},
-    ], tags=["mana","poison"]),
+    ], tags=["mana","poison"], extra={"tier": 2}),
     _enemy("FROST_WARDEN", "Стужный надзиратель", 31, [
         {"id":"ICECHAIN","name":"Ледяные цепи", "type":"attack_apply", "dmg":6, "status":"freeze", "stacks":2, "w":3},
         {"id":"SHIELD","name":"Защитный купол", "type":"block", "block":9, "w":2},
         {"id":"GLARE","name":"Холодный взгляд", "type":"apply", "status":"vulnerable", "stacks":1, "w":1},
-    ], tags=["freeze","control"]),
+    ], tags=["freeze","control"], extra={"tier": 2}),
     _enemy("BLOOD_BUTCHER", "Кровавый палач", 33, [
         {"id":"HACK","name":"Расколоть", "type":"attack", "dmg":9, "w":3},
         {"id":"BLEEDING","name":"Капать на пол", "type":"attack_apply", "dmg":5, "status":"bleed", "stacks":3, "w":2},
         {"id":"GUARD","name":"Щиток", "type":"block", "block":7, "w":1},
-    ], tags=["bleed","burst"]),
+    ], tags=["bleed","burst"], extra={"tier": 3, "immune_to": ["stun"]}),
 ]
 
 # Элиты — акт 2–3
@@ -651,22 +664,30 @@ ELITES: List[Dict[str, Any]] = [
         {"id":"MAUL","name":"Растерзать", "type":"attack", "dmg":12, "w":3},
         {"id":"SNARL","name":"Рык", "type":"apply", "status":"weak", "stacks":2, "w":2},
         {"id":"RUSH","name":"Рывок", "type":"attack_apply", "dmg":9, "status":"bleed", "stacks":3, "w":2},
-    ], tags=["bleed"]),
+        {"id":"RIPOSTE_PREP","name":"Оскал", "type":"counter_prep", "counter_dmg":10, "status":"bleed", "stacks":2, "w":1,
+         "intent_desc":"Ответит ударом и кровотечением", "block":6},
+    ], tags=["bleed"], extra={"immune_to": ["freeze"]}),
     _enemy("ARCANE_TURRET", "Арканная турель", 48, [
         {"id":"BEAM","name":"Луч", "type":"attack", "dmg":14, "w":3},
         {"id":"OVERHEAT","name":"Перегрев", "type":"self_debuff", "desc":"Турель теряет блок, но усиливает следующий луч", "w":1},
         {"id":"BARRIER","name":"Барьер", "type":"block", "block":12, "w":2},
-    ], tags=["burst"]),
+        {"id":"MAGNETIZE","name":"Фазовый якорь", "type":"phase_shift", "set_phase":"overload", "threshold":0.6, "block":10,
+         "buff":"arcane_charge", "w":1, "dmg_mult":1.15, "intent_desc":"При 60% HP переходит в режим перегрева"},
+    ], tags=["burst"], extra={"immune_to": ["stun"]}),
     _enemy("PLAGUE_SISTER", "Сестра чумы", 46, [
         {"id":"INCANT","name":"Заклятие", "type":"attack_apply", "dmg":7, "status":"poison", "stacks":4, "w":3},
         {"id":"MIST","name":"Туман", "type":"apply_all", "status":"poison", "stacks":2, "w":2},
         {"id":"PRAY","name":"Молитва", "type":"heal", "amount":6, "w":1},
-    ], tags=["poison"]),
+        {"id":"PLAGUE_AURA","name":"Фаза эпидемии", "type":"phase_shift", "set_phase":"plague", "threshold":0.5, "w":1,
+         "intent_desc":"При 50% HP усиливает яд и защищается", "block":12, "status_boost":{"status":"poison","bonus":1}},
+    ], tags=["poison"], extra={"immune_to": ["poison"]}),
     _enemy("EMBER_KNIGHT", "Рыцарь угля", 54, [
         {"id":"CLEAVE","name":"Клинок жара", "type":"attack_apply", "dmg":10, "status":"burn", "stacks":3, "w":3},
         {"id":"ARMOR","name":"Латы", "type":"block", "block":14, "w":2},
         {"id":"SCOURGE","name":"Кара", "type":"attack", "dmg":16, "w":1},
-    ], tags=["burn"]),
+        {"id":"COALS_SHIELD","name":"Щит раскалённых углей", "type":"counter_prep", "counter_dmg":12, "status":"burn", "stacks":3, "w":1,
+         "intent_desc":"Отразит огнём первую атаку", "block":10},
+    ], tags=["burn"], extra={"immune_to": ["burn"]}),
 ]
 
 # Боссы — конец каждого акта
@@ -676,19 +697,25 @@ BOSSES: List[Dict[str, Any]] = [
         {"id":"CONFISCATE","name":"Конфискация", "type":"apply", "status":"weak", "stacks":2, "w":2},
         {"id":"FEE","name":"Пошлина", "type":"attack_apply", "dmg":10, "status":"vulnerable", "stacks":2, "w":2},
         {"id":"FORTIFY","name":"Фортификация", "type":"block", "block":18, "w":1},
-    ], tags=["control"]),
+        {"id":"TAX_REVERSAL","name":"Контрревизия", "type":"counter_prep", "counter_dmg":14, "status":"weak", "stacks":2, "w":1,
+         "intent_desc":"Ответит штрафом на любой удар", "block":14},
+    ], tags=["control"], extra={"immune_to": ["stun"]}),
     _enemy("BOSS_WARDEN", "Надзиратель-архимаг", 105, [
         {"id":"ARCANE_BURST","name":"Арканный выброс", "type":"attack", "dmg":18, "w":3},
         {"id":"CHAINS","name":"Цепи власти", "type":"apply", "status":"stun", "stacks":1, "w":1},
         {"id":"RUNE_CAGE","name":"Руническая клетка", "type":"attack_apply", "dmg":12, "status":"freeze", "stacks":2, "w":2},
         {"id":"BARRIER","name":"Барьеры", "type":"block", "block":22, "w":2},
-    ], tags=["stun","freeze"]),
+        {"id":"ASCENDANT_SIGIL","name":"Печать архимага", "type":"phase_shift", "set_phase":"ascended", "threshold":0.65, "block":20,
+         "buff":"arcane_overdrive", "dmg_mult":1.2, "intent_desc":"При 65% HP переходит в усиленную фазу"},
+    ], tags=["stun","freeze"], extra={"immune_to": ["freeze"]}),
     _enemy("BOSS_VOID_JUDGE", "Судья Пустоты", 125, [
         {"id":"VERDICT","name":"Приговор", "type":"attack", "dmg":22, "w":3},
         {"id":"SILENCE","name":"Безмолвие", "type":"apply", "status":"weak", "stacks":3, "w":2},
         {"id":"CORRUPT","name":"Порча", "type":"attack_apply", "dmg":14, "status":"poison", "stacks":5, "w":2},
         {"id":"FLARE","name":"Вспышка", "type":"attack_apply", "dmg":14, "status":"burn", "stacks":5, "w":2},
-    ], tags=["poison","burn"]),
+        {"id":"VOID_RESONANCE","name":"Резонанс пустоты", "type":"phase_shift", "set_phase":"judgement", "threshold":0.4, "block":24,
+         "dmg_mult":1.15, "intent_desc":"При 40% HP фокусируется на добивании", "status_boost":{"status":"vulnerable","bonus":1}},
+    ], tags=["poison","burn"], extra={"immune_to": ["poison","burn"]}),
 ]
 
 # --------------------------
