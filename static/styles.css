@@ -57,7 +57,7 @@ body:before{
   opacity:.25;
 }
 
-.app{min-height:100%; display:flex; flex-direction:column}
+.app{min-height:100%; display:flex; flex-direction:column; padding-bottom:170px;}
 
 .topbar{
   display:flex;
@@ -83,7 +83,7 @@ body:before{
 .title .t1{font-family:"Press Start 2P"; font-size:12px; letter-spacing:.5px}
 .title .t2{font-size:18px; color:var(--muted); margin-top:6px}
 
-.hud{display:flex; gap:10px; flex-wrap:wrap; justify-content:center}
+.hud{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; overflow-x:auto; padding-bottom:4px;}
 .hudItem{
   padding:6px 10px;
   border:1px solid var(--border);
@@ -97,6 +97,9 @@ body:before{
 .relicChip{background:#1f2633;border:1px solid #3c4659;border-radius:8px;padding:4px 8px;font-size:12px;color:#dbe2ff;}
 
 .nav{display:flex; gap:10px}
+.connectRow{display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap;}
+.banner{display:flex; justify-content:space-between; gap:10px; align-items:flex-start; margin: 10px auto 0; padding:12px 14px; border:1px solid rgba(239,68,68,.35); background: rgba(239,68,68,.08); border-radius: var(--radius); width:min(1100px, 96vw); box-shadow: 0 16px 40px var(--shadow);}
+.bannerTitle{font-family:"Press Start 2P"; font-size:12px; margin-bottom:4px; color:#fecdd3;}
 .btn{
   cursor:pointer;
   border:1px solid var(--border);
@@ -134,6 +137,7 @@ body:before{
   border:1px solid var(--border);
   background: rgba(20,20,33,.55);
 }
+.chip.danger{border-color: rgba(239,68,68,.55); color:#fecdd3;}
 
 .toast{
   position:fixed;
@@ -520,4 +524,25 @@ body:before{
   .codexList{grid-template-columns: 1fr}
   .deckList{grid-template-columns: 1fr 1fr}
   .inheritSlot .options{grid-template-columns: 1fr 1fr}
+}
+
+@media (max-width: 860px){
+  .topbar{flex-direction:column; align-items:flex-start; gap:12px;}
+  .nav{width:100%; flex-wrap:wrap;}
+  .connectRow, .hud, .relicBar{justify-content:flex-start;}
+  .screen{width: min(1040px, 96vw);}
+  .mapGraph{min-height: 380px;}
+}
+
+@media (max-width: 720px){
+  body{font-size:18px;}
+  .title .t2{font-size:16px;}
+  .topbar{padding:12px 12px;}
+  .panel, .panel.wide{width:min(100%, 96vw); max-height:84vh;}
+  .hand{gap:8px; bottom:10px; width:min(1000px, 98vw);}
+  .card{width: 170px;}
+  .banner{flex-direction:column;}
+  .screen{padding: 14px 12px 18px;}
+  .mapToolbar input[type=range]{width: 140px;}
+  .pile{min-width: 140px;}
 }

@@ -39,9 +39,24 @@
         <button class="btn btnGhost" id="btnSettings">Настройки</button>
         <button class="btn btnGhost" id="btnMenu">Меню</button>
       </div>
+
+      <div class="connectRow">
+        <div class="chip" id="apiStatus">Связь: авто</div>
+        <div class="tiny muted" id="apiStatusHint">Работаем на том же домене.</div>
+      </div>
     </header>
 
     <div id="toast" class="toast hidden"></div>
+    <div id="offlineBanner" class="banner hidden">
+      <div>
+        <div class="bannerTitle">Нет связи с сервером</div>
+        <div class="muted tiny">Проверь адрес API в настройках или нажми «Повторить». На GitHub Pages укажи внешний API или запусти локально.</div>
+      </div>
+      <div class="row wrap">
+        <button class="btn" id="btnRetryBootstrap">Повторить</button>
+        <button class="btn btnGhost" id="btnOpenSettings">Открыть настройки</button>
+      </div>
+    </div>
 
     <!-- MENU -->
     <div id="overlayMenu" class="overlay hidden">
@@ -69,6 +84,12 @@
           <span id="difficultyValue" class="chip">1</span>
         </label>
         <p class="tiny muted">Сложность влияет на здоровье и урон врагов. Петли после победы тоже усиливают масштаб.</p>
+        <div class="hr"></div>
+        <label class="row wrap">
+          <span>База API (для GitHub Pages / внешнего домена)</span>
+          <input id="apiBaseInput" class="input" placeholder="напр. https://example.com/rogue"/>
+          <span class="tiny muted">Оставь пустым, чтобы использовать тот же домен, что и страница.</span>
+        </label>
         <div class="rowEnd">
           <button class="btn btnPrimary" id="btnSaveSettings">Сохранить</button>
           <button class="btn" id="btnCloseSettings">Закрыть</button>
