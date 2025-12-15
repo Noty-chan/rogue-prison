@@ -539,7 +539,7 @@ function renderCombat(){
         ${renderIntent(e.intent)}
       </div>
       <div class="statusRow">
-        ${renderStatuses(e.statuses)}
+        ${renderStatuses(e.statuses, undefined, e.block)}
       </div>
     `;
     enemyRow.appendChild(div);
@@ -548,7 +548,7 @@ function renderCombat(){
   // player panel
   $('#playerHPText').textContent = `${cv.player.hp}/${cv.player.max_hp}  (Блок ${cv.player.block||0})`;
   $('#playerManaText').textContent = `${cv.player.mana}/${cv.player.mana_max}  (крит ${Math.round(cv.player.crit*100)}%)`;
-  $('#playerStatuses').innerHTML = renderStatuses(cv.player.statuses, cv.player.buffs);
+  $('#playerStatuses').innerHTML = renderStatuses(cv.player.statuses, cv.player.buffs, cv.player.block);
 
   // piles
   $('#drawCount').textContent = String(cv.draw_count);
@@ -583,8 +583,12 @@ function renderIntent(intent){
   return `<div class="intent"><b>…</b> ${escapeHtml(intent.name||'')}</div>`;
 }
 
-function renderStatuses(statuses, buffs){
+function renderStatuses(statuses, buffs, block){
   let html = '';
+  const blockValue = Number(block || 0);
+  if(blockValue > 0){
+    html += `<div class="status"><span class="k">Блок</span>${blockValue}</div>`;
+  }
   for(const [k,v] of Object.entries(statuses || {})){
     if(!v) continue;
     const st = STATE.content_summary?.statuses?.[k];
