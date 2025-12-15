@@ -42,6 +42,22 @@ def enemy_scale(run: Dict[str, Any]) -> float:
     scale = 1.0 + 0.06 * d + 0.03 * (floor - 1) + 0.12 * (act - 1) + 0.10 * loop
     return scale
 
+
+def max_enemy_tier_for_floor(floor: int, loop: int = 0) -> int:
+    if loop > 0 or floor >= 7:
+        return 3
+    if floor >= 3:
+        return 2
+    return 1
+
+
+def enemy_pool_for_floor(run: Dict[str, Any]) -> List[Dict[str, Any]]:
+    floor = int(run.get("floor", 1))
+    loop = int(run.get("loop", 0))
+    tier = max_enemy_tier_for_floor(floor, loop)
+    pool = [e for e in content.ENEMIES if int(e.get("tier", 1)) <= tier]
+    return pool or content.ENEMIES
+
 def seeded_rng(run: Dict[str, Any]) -> random.Random:
     # детерминированный rng через счётчик
     seed = int(run.get("seed", 12345))
@@ -165,10 +181,17 @@ def crit_mult(player: Dict[str, Any]) -> float:
 def status_get(ent: Dict[str, Any], status: str) -> int:
     return int(ent.get("statuses", {}).get(status, 0))
 
-def status_add(ent: Dict[str, Any], status: str, stacks: int):
-    if stacks <= 0: return
+def status_add(ent: Dict[str, Any], status: str, stacks: int, *, combat: Optional[Dict[str, Any]] = None, source: Optional[str] = None) -> bool:
+    if stacks <= 0:
+        return False
+    immune = set(ent.get("status_immunities", []))
+    if status in immune:
+        if combat and source:
+            log(combat, f"{ent.get('name', 'Цель')} игнорирует {status}.")
+        return False
     ent.setdefault("statuses", {})
     ent["statuses"][status] = int(ent["statuses"].get(status, 0)) + int(stacks)
+    return True
 
 def status_set(ent: Dict[str, Any], status: str, stacks: int):
     ent.setdefault("statuses", {})
@@ -176,6 +199,11 @@ def status_set(ent: Dict[str, Any], status: str, stacks: int):
         ent["statuses"].pop(status, None)
     else:
         ent["statuses"][status] = int(stacks)
+
+
+def status_with_bonus(attacker: Optional[Dict[str, Any]], status: str, stacks: int) -> int:
+    bonus_map = (attacker or {}).get("vars", {}).get("status_bonus", {}) or {}
+    return max(0, stacks + int(bonus_map.get(status, 0)))
 
 
 def buff_count(ent: Dict[str, Any], buff: str) -> int:
@@ -599,6 +627,9 @@ def start_combat(state: Dict[str, Any], room_type: str) -> None:
     floor = int(run["floor"])
     act = int(run["act"])
 
+    if is_boss_floor(floor):
+        room_type = "boss"
+
     # Выберем врагов
     enemies: List[Dict[str, Any]] = []
     if room_type == "boss":
@@ -614,11 +645,12 @@ def start_combat(state: Dict[str, Any], room_type: str) -> None:
             enemies = [e1, e2]
     else:  # fight
         n = 1 if rng.random() < 0.45 else (2 if rng.random() < 0.75 else 3)
-        pool = content.ENEMIES if act == 1 else (content.ENEMIES + content.ELITES[:1])
+        pool = enemy_pool_for_floor(run)
         enemies = [instantiate_enemy(rng.choice(pool), rng, scale) for _ in range(n)]
 
     # Состояние игрока в бою
     player = {
+        "name": "Игрок",
         "hp": int(run["hp"]),
         "max_hp": int(run["max_hp"]),
         "block": 0,
@@ -665,9 +697,9 @@ def start_combat(state: Dict[str, Any], room_type: str) -> None:
     if twist:
         if twist.get("poison_on_start"):
             stacks = int(twist.get("poison_on_start", 0))
-            status_add(player, "poison", stacks)
+            status_add(player, "poison", stacks, combat=combat, source=twist["name"])
             for e in combat["enemies"]:
-                status_add(e, "poison", stacks)
+                status_add(e, "poison", stacks, combat=combat, source=twist["name"])
             log(combat, f"{twist['name']}: все получают {stacks} Яда.")
         if twist.get("start_reflect"):
             add_buff(player, "reflect_half_1turn")
@@ -689,18 +721,42 @@ def instantiate_enemy(tmpl: Dict[str, Any], rng: random.Random, scale: float) ->
         "block": 0,
         "statuses": {},
         "buffs": {},
-        "vars": {},
+        "vars": {"phase": tmpl.get("phase", "base"), "status_bonus": {}},
+        "status_immunities": list(tmpl.get("immune_to", [])),
+        "tier": int(tmpl.get("tier", 1)),
         "moves": deep(tmpl["moves"]),
         "intent": None,
         "last_move": None,
     }
     return e
 
+
+def move_available(enemy: Dict[str, Any], move: Dict[str, Any]) -> bool:
+    phase = enemy.get("vars", {}).get("phase", "base")
+    hp = float(enemy.get("hp", 0))
+    hp_pct = hp / float(enemy.get("max_hp", 1)) if enemy.get("max_hp") else 1.0
+    req = move.get("requires", {}) or {}
+    if move.get("threshold") is not None and hp_pct > float(move.get("threshold", 1.0)):
+        return False
+    if move.get("set_phase") and phase == move.get("set_phase"):
+        return False
+    if req.get("phase_is") and phase != req.get("phase_is"):
+        return False
+    if req.get("phase_not") and phase == req.get("phase_not"):
+        return False
+    if req.get("hp_pct_below") is not None and hp_pct >= float(req.get("hp_pct_below", 1.0)):
+        return False
+    return True
+
+
 def choose_intent(enemy: Dict[str, Any], rng: random.Random):
     moves = enemy.get("moves", [])
+    available = [m for m in moves if move_available(enemy, m)]
+    if not available:
+        available = moves
     # небольшой анти-спам: уменьшаем вес последнего
     weighted = []
-    for m in moves:
+    for m in available:
         w = int(m.get("w", 1))
         if enemy.get("last_move") and enemy["last_move"] == m.get("id"):
             w = max(1, w // 2)
@@ -731,6 +787,10 @@ def summarize_move(move: Dict[str, Any]) -> Dict[str, Any]:
         return {"type":"block","name":move["name"],"block":move.get("block",0)}
     if t == "heal":
         return {"type":"heal","name":move["name"],"heal":move.get("amount",0)}
+    if t == "phase_shift":
+        return {"type":"phase","name":move.get("name"),"desc":move.get("intent_desc") or "Смена фазы", "phase": move.get("set_phase"), "block": move.get("block", 0)}
+    if t == "counter_prep":
+        return {"type":"counter","name":move.get("name"),"dmg":move.get("counter_dmg",0),"status":move.get("status"),"stacks":move.get("stacks",0),"desc":move.get("intent_desc"),"block":move.get("block",0)}
     if t == "self_debuff":
         return {"type":"weird","name":move["name"],"desc":move.get("desc","")}
     return {"type":"weird","name":move.get("name","?")}
@@ -797,12 +857,28 @@ def deal_damage(combat: Dict[str, Any], attacker: Dict[str, Any], defender: Dict
             is_crit = True
             dmg = int(round(dmg * crit_mult(attacker)))
 
+    # фазы/бафы врагов
+    bonus_mult = float(attacker.get("vars", {}).get("dmg_mult", 1.0))
+    if bonus_mult != 1.0:
+        dmg = int(round(dmg * bonus_mult))
+    overdrive_active = False
+    charge = buff_count(attacker, "arcane_charge")
+    if charge:
+        dmg = int(round(dmg * 1.15))
+        consume_buff(attacker, "arcane_charge", 1)
+    overdrive = buff_count(attacker, "arcane_overdrive")
+    if overdrive:
+        overdrive_active = True
+        dmg = int(round(dmg * (1.10 + 0.05 * overdrive)))
+
     incoming = compute_damage(attacker, defender, dmg)
     dmg = incoming
 
     # блок
     block = int(defender.get("block", 0))
-    taken = max(0, dmg - block)
+    pierce = 0.25 if overdrive_active else 0.0
+    effective_block = int(math.floor(block * (1 - pierce)))
+    taken = max(0, dmg - effective_block)
     defender["block"] = max(0, block - dmg)
     defender["hp"] = max(0, int(defender.get("hp", 0)) - taken)
 
@@ -825,6 +901,20 @@ def deal_damage(combat: Dict[str, Any], attacker: Dict[str, Any], defender: Dict
 
     if source:
         log(combat, f"{source}: {dmg}{' (КРИТ!)' if is_crit else ''}")
+
+    # телеграфируемая контратака (у врагов)
+    if defender is not combat.get("player") and attacker is combat.get("player"):
+        counter = defender.get("vars", {}).pop("counter_ready", None)
+        if counter and defender.get("hp", 0) > 0:
+            counter_name = counter.get("name", "Контратака")
+            c_dmg = int(counter.get("dmg", 0))
+            if c_dmg > 0:
+                deal_damage(combat, defender, attacker, c_dmg, allow_crit=False, source=f"{defender.get('name','Враг')} — {counter_name}")
+            c_status = counter.get("status")
+            c_stacks = int(counter.get("stacks", 0))
+            if c_status and c_stacks:
+                status_add(attacker, c_status, c_stacks, combat=combat, source=counter_name)
+            log(combat, f"{defender.get('name','Враг')} отвечает: {counter_name}.")
     return taken, is_crit
 
 # ---- эффекты карт ----
@@ -943,7 +1033,7 @@ def resolve_card_effects(state: Dict[str, Any], combat: Dict[str, Any], inst: Di
                 burn_boost_2 = buff_count(p, "burn_on_hit_2")
                 burn_total = burn_boost + (2 * burn_boost_2)
                 if burn_total:
-                    status_add(target_ent, "burn", burn_total)
+                    status_add(target_ent, "burn", burn_total, combat=combat, source=cdef["name"])
             # echo_attack_half consumes once
             if target_ent:
                 echo_stacks = buff_count(p, "echo_attack_half")
@@ -977,12 +1067,12 @@ def resolve_card_effects(state: Dict[str, Any], combat: Dict[str, Any], inst: Di
             stacks = int(eff.get("stacks", 0))
             to = eff.get("to", "enemy")
             if to == "enemy":
-                if target_ent: status_add(target_ent, status, stacks)
+                if target_ent: status_add(target_ent, status, stacks, combat=combat, source=cdef["name"])
             elif to == "all_enemies":
                 for e in enemies:
-                    if e["hp"] > 0: status_add(e, status, stacks)
+                    if e["hp"] > 0: status_add(e, status, stacks, combat=combat, source=cdef["name"])
             elif to == "self":
-                status_add(p, status, stacks)
+                status_add(p, status, stacks, combat=combat, source=cdef["name"])
             log(combat, f"{cdef['name']}: {content.STATUSES.get(status,{}).get('name',status)} +{stacks}.")
         elif op == "draw":
             draw_to_hand(combat, n=int(eff.get("n", 1)), rng=combat["_rng"])
@@ -1076,7 +1166,7 @@ def resolve_effect_list(state: Dict[str, Any], combat: Dict[str, Any], effects: 
             stacks = int(eff.get("stacks", 0))
             to = eff.get("to", "enemy")
             if to == "enemy" and target_ent:
-                status_add(target_ent, status, stacks)
+                status_add(target_ent, status, stacks, combat=combat, source="Эффект")
         elif op == "damage":
             if target_ent:
                 deal_damage(combat, p, target_ent, int(eff.get("amount", 0)), allow_crit=True, source="Эффект")
@@ -1225,7 +1315,7 @@ def apply_curse_penalties(combat: Dict[str, Any]) -> None:
         if eff.get("apply_status"):
             st = eff["apply_status"].get("status")
             stacks = int(eff["apply_status"].get("stacks", 0))
-            status_add(p, st, stacks)
+            status_add(p, st, stacks, combat=combat, source=cdef["name"])
             log(combat, f"{cdef['name']}: на тебя накладывается {content.STATUSES.get(st,{}).get('name', st)}.")
         if eff.get("next_draw_penalty"):
             combat["_curse_draw_penalty"] = int(combat.get("_curse_draw_penalty", 0)) + int(eff.get("next_draw_penalty", 0))
@@ -1252,39 +1342,39 @@ def end_turn(state: Dict[str, Any]) -> None:
     if eclipse:
         for e in combat["enemies"]:
             if e["hp"] > 0:
-                status_add(e, "poison", 2 * eclipse)
-                status_add(e, "burn", 2 * eclipse)
+                status_add(e, "poison", 2 * eclipse, combat=combat, source="Затмение")
+                status_add(e, "burn", 2 * eclipse, combat=combat, source="Затмение")
         log(combat, f"Затмение: всем врагам +{2 * eclipse} яд/+{2 * eclipse} ожог.")
     eclipse_plus = buff_count(p, "eclipse_plus")
     if eclipse_plus:
         for e in combat["enemies"]:
             if e["hp"] > 0:
-                status_add(e, "poison", 3 * eclipse_plus)
-                status_add(e, "burn", 3 * eclipse_plus)
+                status_add(e, "poison", 3 * eclipse_plus, combat=combat, source="Затмение+")
+                status_add(e, "burn", 3 * eclipse_plus, combat=combat, source="Затмение+")
         log(combat, f"Затмение+: всем врагам +{3 * eclipse_plus} яд/+{3 * eclipse_plus} ожог.")
     if "phoenix_heart" in p.get("buffs", {}):
         stacks = int(p["buffs"].get("phoenix_heart", 1))
         for e in combat["enemies"]:
             if e["hp"] > 0:
-                status_add(e, "burn", 1 * stacks)
+                status_add(e, "burn", 1 * stacks, combat=combat, source="Сердце феникса")
         log(combat, "Сердце феникса: всем врагам +Ожог.")
     if "phoenix_heart_plus" in p.get("buffs", {}):
         stacks = int(p["buffs"].get("phoenix_heart_plus", 1))
         for e in combat["enemies"]:
             if e["hp"] > 0:
-                status_add(e, "burn", 2 * stacks)
+                status_add(e, "burn", 2 * stacks, combat=combat, source="Сердце феникса+")
         log(combat, "Сердце феникса+: всем врагам +Ожог.")
     venom = buff_count(p, "venom_rain")
     if venom:
         for e in combat["enemies"]:
             if e["hp"] > 0:
-                status_add(e, "poison", 2 * venom)
+                status_add(e, "poison", 2 * venom, combat=combat, source="Ядовитая призма")
         log(combat, f"Ядовитая призма: всем врагам +{2 * venom} Яда.")
     venom_plus = buff_count(p, "venom_rain_plus")
     if venom_plus:
         for e in combat["enemies"]:
             if e["hp"] > 0:
-                status_add(e, "poison", 3 * venom_plus)
+                status_add(e, "poison", 3 * venom_plus, combat=combat, source="Ядовитая призма+")
         log(combat, f"Ядовитая призма+: всем врагам +{3 * venom_plus} Яда.")
 
 
@@ -1453,14 +1543,17 @@ def enemy_turn(state: Dict[str, Any]) -> None:
         elif mtype == "attack_apply":
             dmg = int(move.get("dmg", 0))
             deal_damage(combat, e, p, dmg, allow_crit=False, source=e["name"] + " — " + move["name"])
-            status_add(p, move.get("status"), int(move.get("stacks", 0)))
+            stacks = status_with_bonus(e, move.get("status"), int(move.get("stacks", 0)))
+            status_add(p, move.get("status"), stacks, combat=combat, source=e["name"] + " — " + move["name"])
             tick_bleed_on_attack(combat, e)
         elif mtype == "apply":
-            status_add(p, move.get("status"), int(move.get("stacks", 0)))
-            log(combat, f"{e['name']}: {move['name']} -> {move.get('status')} +{move.get('stacks',0)}.")
+            stacks = status_with_bonus(e, move.get("status"), int(move.get("stacks", 0)))
+            status_add(p, move.get("status"), stacks, combat=combat, source=e["name"] + " — " + move["name"])
+            log(combat, f"{e['name']}: {move['name']} -> {move.get('status')} +{stacks}.")
         elif mtype == "apply_all":
-            status_add(p, move.get("status"), int(move.get("stacks", 0)))
-            log(combat, f"{e['name']}: {move['name']} -> {move.get('status')} +{move.get('stacks',0)}.")
+            stacks = status_with_bonus(e, move.get("status"), int(move.get("stacks", 0)))
+            status_add(p, move.get("status"), stacks, combat=combat, source=e["name"] + " — " + move["name"])
+            log(combat, f"{e['name']}: {move['name']} -> {move.get('status')} +{stacks}.")
         elif mtype == "block":
             e["block"] = int(e.get("block", 0)) + int(move.get("block", 0))
             log(combat, f"{e['name']}: {move['name']} (+{move.get('block',0)} Блока).")
@@ -1468,6 +1561,30 @@ def enemy_turn(state: Dict[str, Any]) -> None:
             amt = int(move.get("amount", 0))
             e["hp"] = min(int(e["max_hp"]), int(e["hp"]) + amt)
             log(combat, f"{e['name']}: лечится на {amt}.")
+        elif mtype == "phase_shift":
+            target_phase = move.get("set_phase", "phase2")
+            e.get("vars", {})["phase"] = target_phase
+            if move.get("block"):
+                e["block"] = int(e.get("block", 0)) + int(move.get("block", 0))
+            if move.get("buff"):
+                add_buff(e, move.get("buff"))
+            if move.get("dmg_mult"):
+                e.setdefault("vars", {})["dmg_mult"] = float(move.get("dmg_mult", 1.0))
+            sb = move.get("status_boost") or {}
+            if sb.get("status"):
+                bonus_map = e.setdefault("vars", {}).setdefault("status_bonus", {})
+                bonus_map[sb["status"]] = int(bonus_map.get(sb["status"], 0)) + int(sb.get("bonus", 0))
+            log(combat, f"{e['name']} меняет фазу: {move.get('name')}.")
+        elif mtype == "counter_prep":
+            if move.get("block"):
+                e["block"] = int(e.get("block", 0)) + int(move.get("block", 0))
+            e.get("vars", {})["counter_ready"] = {
+                "dmg": int(move.get("counter_dmg", 0)),
+                "status": move.get("status"),
+                "stacks": int(move.get("stacks", 0)),
+                "name": move.get("name"),
+            }
+            log(combat, f"{e['name']} готовится ответить: {move.get('name')}.")
         elif mtype == "self_debuff":
             # для «турели»: следующий луч сильнее
             e["vars"]["overheat"] = 1

@@ -578,6 +578,8 @@ function renderIntent(intent){
   if(t === 'apply_all') return `<div class="intent"><b>ДЕБАФ</b> ${tagToRu(intent.status)} ${intent.stacks}</div>`;
   if(t === 'block') return `<div class="intent"><b>БЛОК</b> ${intent.block}</div>`;
   if(t === 'heal') return `<div class="intent"><b>ХИЛ</b> ${intent.heal}</div>`;
+  if(t === 'phase') return `<div class="intent"><b>ФАЗА</b> ${intent.desc || 'Смена поведения'}${intent.block?` (+${intent.block} блок)`:''}</div>`;
+  if(t === 'counter') return `<div class="intent"><b>КОНТР-УДАР</b> ${intent.dmg}${intent.status?` + ${tagToRu(intent.status)} ${intent.stacks||''}`:''}${intent.block?` (+${intent.block} блок)`:''}<div class="muted">${intent.desc||'Сработает при получении урона'}</div></div>`;
   return `<div class="intent"><b>…</b> ${escapeHtml(intent.name||'')}</div>`;
 }
 
