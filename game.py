@@ -1013,7 +1013,7 @@ def resolve_card_effects(state: Dict[str, Any], combat: Dict[str, Any], inst: Di
             log(combat, "Выбери эффект карты.")
             return
 
-    for eff in cdef.get("effects", []):
+    for idx, eff in enumerate(cdef.get("effects", [])):
         op = eff.get("op")
         if op == "damage":
             amt = eff.get("amount", 0)
@@ -1102,7 +1102,19 @@ def resolve_card_effects(state: Dict[str, Any], combat: Dict[str, Any], inst: Di
             p["hp"] = min(int(p["max_hp"]), int(p["hp"]) + heal)
             log(combat, f"{cdef['name']}: +{heal} HP.")
         elif op == "discard_choose":
-            combat["pending"] = {"type":"discard_choose","n":int(eff.get("n",1))}
+            after = cdef.get("effects", [])[idx+1:]
+            target_idx = None
+            if target_ent and target_ent in enemies:
+                try:
+                    target_idx = enemies.index(target_ent)
+                except ValueError:
+                    target_idx = None
+            combat["pending"] = {
+                "type":"discard_choose",
+                "n":int(eff.get("n",1)),
+                "after_effects": after,
+                "target_idx": target_idx,
+            }
             log(combat, "Выбери карты для сброса.")
             return
         elif op == "discard_random":
@@ -1263,7 +1275,16 @@ def resolve_pending(state: Dict[str, Any], payload: Dict[str, Any]) -> None:
                 c["charge"] = 0
                 combat["discard_pile"].append(c)
                 trigger_on_discard(combat, c)
+        after = pending.get("after_effects") or []
+        target_idx = pending.get("target_idx")
         combat["pending"] = None
+        if after:
+            target_ent = None
+            if target_idx is not None:
+                enemies = combat.get("enemies", [])
+                if 0 <= int(target_idx) < len(enemies):
+                    target_ent = enemies[int(target_idx)]
+            resolve_effect_list(state, combat, after, combat["player"], target_ent)
         state["updated_at"] = now_ts()
         return
 

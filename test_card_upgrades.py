@@ -41,5 +41,36 @@ class CardUpgradeDefTest(unittest.TestCase):
         self.assertEqual(deck_view[0]["cost"], upgraded_def["cost"])
 
 
+class CardFlowTest(unittest.TestCase):
+    def test_discard_choose_continues_followup_effects(self):
+        state = game.default_state()
+        game.new_run(state)
+        run = state["run"]
+        run["deck"] = [game.make_card_instance("SCAVENGE"), game.make_card_instance("SPARK_SHOT")]
+        run["hp"] = run["max_hp"] = 40
+
+        game.start_combat(state, "fight")
+        combat = run["combat"]
+
+        scavenge = game.deep(run["deck"][0])
+        fodder = game.deep(run["deck"][1])
+        combat.update({
+            "hand": [scavenge, fodder],
+            "draw_pile": [],
+            "discard_pile": [],
+            "exhaust_pile": [],
+            "pending": None,
+        })
+        combat["player"]["mana"] = 3
+
+        game.play_card(state, scavenge["uid"], None)
+        self.assertIsNotNone(combat.get("pending"))
+
+        game.resolve_pending(state, {"uids": [fodder["uid"]]})
+
+        self.assertIsNone(combat.get("pending"))
+        self.assertEqual(combat["player"]["mana"], 4)
+
+
 if __name__ == "__main__":
     unittest.main()
