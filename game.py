@@ -1170,7 +1170,9 @@ def resolve_effect_list(state: Dict[str, Any], combat: Dict[str, Any], effects: 
         if op == "draw":
             draw_to_hand(combat, n=int(eff.get("n", 1)), rng=combat["_rng"])
         elif op == "gain_mana":
-            p["mana"] += int(eff.get("n", 1))
+            inc = int(eff.get("n", 1))
+            p["mana"] = int(p.get("mana", 0)) + inc
+            log(combat, f"Эффект: +{inc} маны.")
         elif op == "block":
             p["block"] += int(eff.get("amount", 0))
         elif op == "apply":
