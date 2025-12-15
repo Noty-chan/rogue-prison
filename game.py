@@ -1528,6 +1528,10 @@ def enemy_turn(state: Dict[str, Any]) -> None:
     p = combat["player"]
     enemies = combat["enemies"]
 
+    # блок врагов снимается в начале их фазы, чтобы он учитывался при атаках игрока
+    for e in enemies:
+        e["block"] = 0
+
     # яд тикает на врагах в начале их хода
     for e in enemies:
         if e["hp"] > 0:
@@ -1651,10 +1655,6 @@ def enemy_turn(state: Dict[str, Any]) -> None:
         if all(en["hp"] <= 0 for en in enemies):
             win_combat(state)
             return
-
-    # блок врагов обнуляется после их хода (как «снятие блока» в начале их следующего, упрощение)
-    for e in enemies:
-        e["block"] = 0
 
     # игрок блок обнулим в начале следующего хода игрока (уже делаем в start_player_turn)
     combat["phase"] = "player"
