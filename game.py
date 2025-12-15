@@ -1408,86 +1408,117 @@ def end_turn(state: Dict[str, Any]) -> None:
 def start_player_turn(state: Dict[str, Any]) -> None:
     run = state["run"]
     combat = run.get("combat")
-    rng = seeded_rng(run)
-    combat["_rng"] = rng
 
-    combat["phase"] = "player"
-    combat["turn"] += 1
+    while True:
+        rng = seeded_rng(run)
+        combat["_rng"] = rng
 
-    p = combat["player"]
-    # одноходовые отражения очищаются к новому ходу
-    p.get("buffs", {}).pop("reflect_half_1turn", None)
-    p.get("buffs", {}).pop("reflect_full_1turn", None)
-    # блок обнуляется в начале своего хода (как в StS)
-    p["block"] = 0
+        combat["turn"] += 1
 
-    # dot tick на игроке (яд)
-    tick_poison(combat, p, owner="player")
+        p = combat["player"]
+        # одноходовые отражения очищаются к новому ходу
+        p.get("buffs", {}).pop("reflect_half_1turn", None)
+        p.get("buffs", {}).pop("reflect_full_1turn", None)
+        # блок обнуляется в начале своего хода (как в StS)
+        p["block"] = 0
 
-    # мана: refill
-    p["mana"] = int(p.get("mana_max", 3))
-    # battery: в начале хода +1 мана за стак
-    battery_stacks = buff_count(p, "battery") + buff_count(p, "battery_plus")
-    if battery_stacks:
-        p["mana"] += battery_stacks
-        log(combat, f"Батарея: +{battery_stacks} маны в начале хода.")
+        # dot tick на игроке (яд)
+        tick_poison(combat, p, owner="player")
 
-    # ward: блок в начале хода
-    if "ward_small" in p.get("buffs", {}):
-        p["block"] += 2
-    if "ward_medium" in p.get("buffs", {}):
-        p["block"] += 3
-    regen_heal = 0
-    regen_block = 0
-    buffs = p.get("buffs", {})
-    if "regen_small" in buffs:
-        regen_heal += 2 * int(buffs.get("regen_small", 1))
-    if "regen_medium" in buffs:
-        regen_heal += 3 * int(buffs.get("regen_medium", 1))
-    if "regen_guard" in buffs:
-        regen_heal += 4 * int(buffs.get("regen_guard", 1))
-        regen_block += 2 * int(buffs.get("regen_guard", 1))
-    if "regen_guard_plus" in buffs:
-        regen_heal += 5 * int(buffs.get("regen_guard_plus", 1))
-        regen_block += 3 * int(buffs.get("regen_guard_plus", 1))
-    if "phoenix_heart" in buffs:
-        regen_heal += 6 * int(buffs.get("phoenix_heart", 1))
-    if "phoenix_heart_plus" in buffs:
-        regen_heal += 7 * int(buffs.get("phoenix_heart_plus", 1))
-    if regen_heal > 0:
-        before = int(p.get("hp", 0))
-        p["hp"] = min(int(p["max_hp"]), before + regen_heal)
-        healed = p["hp"] - before
-        if healed > 0:
-            log(combat, f"Регенерация: +{healed} HP.")
-    if regen_block > 0:
-        p["block"] += regen_block
-        log(combat, f"Регенерация: +{regen_block} Блока.")
-    ward_small = buff_count(p, "ward_small")
-    ward_medium = buff_count(p, "ward_medium")
-    if ward_small:
-        p["block"] += 2 * ward_small
-    if ward_medium:
-        p["block"] += 3 * ward_medium
+        # если умер от яда
+        if p["hp"] <= 0:
+            lose_combat(state)
+            return
 
-    # добор до 6 с учётом проклятий
-    penalty = int(combat.pop("_curse_draw_penalty", 0))
-    if penalty:
-        log(combat, f"Проклятье ограничивает добор: -{penalty} карта(ы).")
-    draw_n = max(0, 6 - len(combat["hand"]) - penalty)
-    draw_to_hand(combat, n=draw_n, rng=rng)
+        skipped = False
+        # stun: пропуск хода
+        if status_get(p, "stun") > 0:
+            status_dec(p, "stun", 1)
+            log(combat, "Игрок оглушён и пропускает ход.")
+            skipped = True
+        # freeze: шанс сорваться
+        elif status_get(p, "freeze") > 0:
+            if rng.random() < 0.30:
+                status_dec(p, "freeze", 1)
+                log(combat, "Игрок заморожен и срывает ход.")
+                skipped = True
 
-    # если умер от яда
-    if p["hp"] <= 0:
-        lose_combat(state)
+        if skipped:
+            combat["phase"] = "enemy"
+            state["updated_at"] = now_ts()
+            enemy_turn(state)
+            if state.get("screen") in ("DEFEAT", "REWARD", "ACT_END", "VICTORY"):
+                return
+            # после пропуска сразу пробуем начать следующий ход
+            continue
+
+        combat["phase"] = "player"
+
+        # мана: refill
+        p["mana"] = int(p.get("mana_max", 3))
+        # battery: в начале хода +1 мана за стак
+        battery_stacks = buff_count(p, "battery") + buff_count(p, "battery_plus")
+        if battery_stacks:
+            p["mana"] += battery_stacks
+            log(combat, f"Батарея: +{battery_stacks} маны в начале хода.")
+
+        # ward: блок в начале хода
+        if "ward_small" in p.get("buffs", {}):
+            p["block"] += 2
+        if "ward_medium" in p.get("buffs", {}):
+            p["block"] += 3
+        regen_heal = 0
+        regen_block = 0
+        buffs = p.get("buffs", {})
+        if "regen_small" in buffs:
+            regen_heal += 2 * int(buffs.get("regen_small", 1))
+        if "regen_medium" in buffs:
+            regen_heal += 3 * int(buffs.get("regen_medium", 1))
+        if "regen_guard" in buffs:
+            regen_heal += 4 * int(buffs.get("regen_guard", 1))
+            regen_block += 2 * int(buffs.get("regen_guard", 1))
+        if "regen_guard_plus" in buffs:
+            regen_heal += 5 * int(buffs.get("regen_guard_plus", 1))
+            regen_block += 3 * int(buffs.get("regen_guard_plus", 1))
+        if "phoenix_heart" in buffs:
+            regen_heal += 6 * int(buffs.get("phoenix_heart", 1))
+        if "phoenix_heart_plus" in buffs:
+            regen_heal += 7 * int(buffs.get("phoenix_heart_plus", 1))
+        if regen_heal > 0:
+            before = int(p.get("hp", 0))
+            p["hp"] = min(int(p["max_hp"]), before + regen_heal)
+            healed = p["hp"] - before
+            if healed > 0:
+                log(combat, f"Регенерация: +{healed} HP.")
+        if regen_block > 0:
+            p["block"] += regen_block
+            log(combat, f"Регенерация: +{regen_block} Блока.")
+        ward_small = buff_count(p, "ward_small")
+        ward_medium = buff_count(p, "ward_medium")
+        if ward_small:
+            p["block"] += 2 * ward_small
+        if ward_medium:
+            p["block"] += 3 * ward_medium
+
+        # добор до 6 с учётом проклятий
+        penalty = int(combat.pop("_curse_draw_penalty", 0))
+        if penalty:
+            log(combat, f"Проклятье ограничивает добор: -{penalty} карта(ы).")
+        draw_n = max(0, 6 - len(combat["hand"]) - penalty)
+        draw_to_hand(combat, n=draw_n, rng=rng)
+
+        # если умер от яда
+        if p["hp"] <= 0:
+            lose_combat(state)
+            return
+
+        # выставим намерения у врагов, если где-то нет
+        for e in combat["enemies"]:
+            if e["hp"] > 0 and not e.get("intent"):
+                choose_intent(e, rng)
+
+        state["updated_at"] = now_ts()
         return
-
-    # выставим намерения у врагов, если где-то нет
-    for e in combat["enemies"]:
-        if e["hp"] > 0 and not e.get("intent"):
-            choose_intent(e, rng)
-
-    state["updated_at"] = now_ts()
 
 def enemy_turn(state: Dict[str, Any]) -> None:
     run = state["run"]
@@ -1596,13 +1627,26 @@ def enemy_turn(state: Dict[str, Any]) -> None:
         else:
             log(combat, f"{e['name']} делает что-то странное.")
 
-        # dead check
+        # dead check на игроке
         if p["hp"] <= 0:
             lose_combat(state)
             return
 
+        # если враг умер от шипов/дотов в своём действии — пропустим burn/intents
+        if e["hp"] <= 0:
+            if all(en["hp"] <= 0 for en in enemies):
+                win_combat(state)
+                return
+            continue
+
         # burn tick на враге (конец его хода)
         tick_burn(combat, e, owner="enemy")
+
+        if e["hp"] <= 0:
+            if all(en["hp"] <= 0 for en in enemies):
+                win_combat(state)
+                return
+            continue
 
         # intent на следующий ход
         choose_intent(e, rng)
