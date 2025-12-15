@@ -81,6 +81,31 @@ def add_card_to_deck(run: Dict[str, Any], card_id: str, upgraded: bool=False) ->
     run.setdefault("deck", []).append(inst)
     return inst
 
+def add_curse_to_deck(run: Dict[str, Any], curse_id: Optional[str] = None, rng: Optional[random.Random] = None) -> Dict[str, Any]:
+    r = rng or random.Random()
+    cid = curse_id or r.choice(content.CURSES)["id"]
+    inst = make_card_instance(cid, False)
+    run.setdefault("deck", []).append(inst)
+    return inst
+
+def is_curse_card(card_def: Dict[str, Any]) -> bool:
+    return card_def.get("type") == "curse"
+
+def has_relic(run: Dict[str, Any], relic_id: str) -> bool:
+    return relic_id in run.get("relics", [])
+
+def grant_relic(run: Dict[str, Any], relic_id: str) -> None:
+    run.setdefault("relics", [])
+    if relic_id not in run["relics"]:
+        run["relics"].append(relic_id)
+
+def random_relic(rng: random.Random, owned: Optional[List[str]] = None) -> Optional[str]:
+    owned = owned or []
+    pool = [r for r in content.RELICS if r["id"] not in owned]
+    if not pool:
+        return None
+    return rng.choice(pool)["id"]
+
 def ensure_rarity_pity(run: Dict[str, Any]) -> Dict[str, int]:
     rp = run.get("rarity_pity") or {}
     run["rarity_pity"] = {
@@ -194,6 +219,7 @@ def sanitize_for_client(state: Dict[str, Any]) -> Dict[str, Any]:
         run["act"] = act_for_floor(run.get("floor", 1))
         # Заполняем удобные поля для фронта
         run["deck_view"] = [card_view(ci) for ci in run.get("deck", [])]
+        run["relics_view"] = [content.RELIC_INDEX[rid] for rid in run.get("relics", []) if rid in content.RELIC_INDEX]
         if run.get("combat"):
             run["combat_view"] = combat_view(run["combat"])
         else:
@@ -204,6 +230,8 @@ def sanitize_for_client(state: Dict[str, Any]) -> Dict[str, Any]:
         "card_types": content.CARD_TYPES,
         "statuses": content.STATUSES,
         "buffs": {k:{"name":v["name"],"desc":v["desc"]} for k,v in content.BUFFS.items()},
+        "curses": {c["id"]: {"name": c["name"], "desc": c["desc"]} for c in content.CURSES},
+        "relics": {r["id"]: {"name": r["name"], "desc": r["desc"]} for r in content.RELICS},
         "crit_base": content.CRIT_BASE_CHANCE,
     }
     return st
@@ -355,6 +383,7 @@ def new_run(state: Dict[str, Any], *, keep_cards: Optional[List[Dict[str, Any]]]
         "hp": 70,
         "rarity_pity": {"rare": 0, "legendary": 0},
         "deck": starter_deck(),
+        "relics": ["STARTER_SEAL"],
         "combat": None,
         "room": None,
         "room_choices": [],
@@ -548,6 +577,20 @@ def maybe_roll_room_twist(state: Dict[str, Any], room_type: str) -> Optional[Dic
 
 # ---- бой ----
 
+def apply_relics_on_combat_start(run: Dict[str, Any], combat: Dict[str, Any]) -> None:
+    p = combat.get("player", {})
+    if has_relic(run, "STARTER_SEAL"):
+        p["mana_max"] += 1
+        p["mana"] += 1
+    if has_relic(run, "BLOOD_VIAL"):
+        p["hp"] = min(int(p.get("max_hp", 0)), int(p.get("hp", 0)) + 5)
+        log(combat, "Сосуд крови: лечение +5 HP.")
+    if has_relic(run, "ECHO_CORE"):
+        log(combat, "Ядро эха: награда даст +1 выбор карты.")
+    if has_relic(run, "RAT_POUCH"):
+        log(combat, "Кошель крысолова шелестит — жетонов будет больше.")
+
+
 def start_combat(state: Dict[str, Any], room_type: str) -> None:
     run = state["run"]
     rng = seeded_rng(run)
@@ -608,6 +651,8 @@ def start_combat(state: Dict[str, Any], room_type: str) -> None:
         "pending": None,
         "log": [],
     }
+
+    apply_relics_on_combat_start(run, combat)
 
     # Выставим начальные намерения
     for e in combat["enemies"]:
@@ -801,6 +846,9 @@ def play_card(state: Dict[str, Any], card_uid: str, target: Optional[int]) -> No
     if not inst:
         return
     cdef = content.get_card_def(inst["id"], upgraded=bool(inst.get("up", False)))
+    if is_curse_card(cdef):
+        log(combat, "Проклятья не разыграть — их нужно переждать или убрать.")
+        return
     cost = card_cost(cdef, inst)
     if combat["player"]["mana"] < cost:
         log(combat, "Недостаточно маны.")
@@ -1161,6 +1209,27 @@ def resolve_pending(state: Dict[str, Any], payload: Dict[str, Any]) -> None:
             state["updated_at"] = now_ts()
         return
 
+# ---- проклятья ----
+
+def apply_curse_penalties(combat: Dict[str, Any]) -> None:
+    p = combat.get("player", {})
+    for c in list(combat.get("hand", [])):
+        cdef = content.get_card_def(c["id"], upgraded=bool(c.get("up", False)))
+        if not is_curse_card(cdef):
+            continue
+        eff = cdef.get("curse_effect", {})
+        if eff.get("lose_hp"):
+            dmg = int(eff.get("lose_hp", 0))
+            p["hp"] = max(0, int(p.get("hp", 0)) - dmg)
+            log(combat, f"{cdef['name']}: -{dmg} HP.")
+        if eff.get("apply_status"):
+            st = eff["apply_status"].get("status")
+            stacks = int(eff["apply_status"].get("stacks", 0))
+            status_add(p, st, stacks)
+            log(combat, f"{cdef['name']}: на тебя накладывается {content.STATUSES.get(st,{}).get('name', st)}.")
+        if eff.get("next_draw_penalty"):
+            combat["_curse_draw_penalty"] = int(combat.get("_curse_draw_penalty", 0)) + int(eff.get("next_draw_penalty", 0))
+
 # ---- конец хода ----
 
 def end_turn(state: Dict[str, Any]) -> None:
@@ -1175,6 +1244,8 @@ def end_turn(state: Dict[str, Any]) -> None:
     combat["_rng"] = rng
 
     p = combat["player"]
+
+    apply_curse_penalties(combat)
 
     # turn_end_player бафы
     eclipse = buff_count(p, "eclipse")
@@ -1309,8 +1380,12 @@ def start_player_turn(state: Dict[str, Any]) -> None:
     if ward_medium:
         p["block"] += 3 * ward_medium
 
-    # добор до 6
-    draw_to_hand(combat, n=6 - len(combat["hand"]), rng=rng)
+    # добор до 6 с учётом проклятий
+    penalty = int(combat.pop("_curse_draw_penalty", 0))
+    if penalty:
+        log(combat, f"Проклятье ограничивает добор: -{penalty} карта(ы).")
+    draw_n = max(0, 6 - len(combat["hand"]) - penalty)
+    draw_to_hand(combat, n=draw_n, rng=rng)
 
     # если умер от яда
     if p["hp"] <= 0:
@@ -1479,10 +1554,19 @@ def win_combat(state: Dict[str, Any]) -> None:
 
     twist = run.get("room_twist")
     extra_cards = 1 if twist and twist.get("extra_reward") else 0
-    # награда: 3 карты (+twist)
+    if has_relic(run, "ECHO_CORE"):
+        extra_cards += 1
+    # награда: 3 карты (+twist + реликвии)
     reward_cards = generate_card_choices(run, rng, k=3 + extra_cards)
     if twist and twist.get("bonus_gold"):
         gain += int(twist.get("bonus_gold", 0))
+    if has_relic(run, "RAT_POUCH"):
+        bonus = 6
+        gain += bonus
+        state.setdefault("ui", {})
+        state["ui"]["toast"] = f"Победа. +{gain} жетонов (включая +{bonus} от кошеля)."
+    else:
+        state["ui"]["toast"] = f"Победа. +{gain} жетонов."
     run["reward"] = {
         "type": "card_pick",
         "cards": reward_cards,
@@ -1490,7 +1574,6 @@ def win_combat(state: Dict[str, Any]) -> None:
     }
     run["combat"] = None
     state["screen"] = "REWARD"
-    state["ui"]["toast"] = f"Победа. +{gain} жетонов."
     state["updated_at"] = now_ts()
 
 def lose_combat(state: Dict[str, Any]) -> None:
@@ -1623,6 +1706,17 @@ def apply_event_effect(state: Dict[str, Any], eff: Dict[str, Any]) -> None:
         for cid in ids:
             add_card_to_deck(run, cid, False)
         state["ui"]["toast"] = f"+{n} карта(ы): {rarity}."
+    elif op == "event_gain_relic":
+        relic = random_relic(rng, run.get("relics", []))
+        if relic:
+            grant_relic(run, relic)
+            state["ui"]["toast"] = f"Получена реликвия: {content.RELIC_INDEX[relic]['name']}"
+        else:
+            state["ui"]["toast"] = "Реликвии закончились."
+    elif op == "event_gain_curse":
+        cid = add_curse_to_deck(run, rng=rng)["id"]
+        cdef = content.get_card_def(cid)
+        state["ui"]["toast"] = f"Проклятье добавлено: {cdef['name']}"
     elif op == "event_remove_card":
         n = int(eff.get("n", 1))
         picks = rng.sample(run["deck"], k=min(4, len(run["deck"])))
@@ -1782,10 +1876,19 @@ def open_chest(state: Dict[str, Any]) -> None:
     rng = seeded_rng(run)
     gold = 35 + rng.randint(0, 25)
     run["gold"] += gold
-    # шанс на редкую карту
+    relic = random_relic(rng, run.get("relics", []))
+    relic_text = ""
+    if relic:
+        grant_relic(run, relic)
+        relic_text = f" Реликвия: {content.RELIC_INDEX[relic]['name']}."
+    # шанс на проклятье (гарантия, если есть компас)
+    if has_relic(run, "WARDENS_COMPASS") or rng.random() < 0.4:
+        curse_id = rng.choice(content.CURSES)["id"]
+        add_curse_to_deck(run, curse_id, rng)
+        relic_text += " Проклятье добавлено в колоду!"
     cid = generate_card_choices(run, rng, k=1)[0]
     add_card_to_deck(run, cid, False)
-    state["ui"]["toast"] = f"Сундук: +{gold} жетонов и карта."
+    state["ui"]["toast"] = f"Сундук: +{gold} жетонов, карта и находка.{relic_text}"
     complete_floor_and_continue(state)
 
 # ---- акт-энд ----

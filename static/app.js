@@ -74,7 +74,7 @@ function rarityName(r){
   return ({common:'Обычная',uncommon:'Необычная',rare:'Редкая',legendary:'Легендарная'})[r] || r;
 }
 function typeName(t){
-  return ({attack:'Атака',defense:'Защита',skill:'Навык',upgrade:'Апгрейд'})[t] || t;
+  return ({attack:'Атака',defense:'Защита',skill:'Навык',upgrade:'Апгрейд',curse:'Проклятье'})[t] || t;
 }
 function tagToRu(tag){
   const map = {
@@ -229,6 +229,28 @@ function updateHUD(){
   }else{
     $('#hudHP').textContent = `HP: ${run?.hp ?? '—'}/${run?.max_hp ?? '—'}`;
     $('#hudMana').textContent = `Мана: —/—`;
+  }
+  renderRelicBar();
+}
+
+function renderRelicBar(){
+  const bar = $('#relicBar');
+  if(!bar) return;
+  bar.innerHTML = '';
+  const relics = STATE?.run?.relics_view || [];
+  if(!relics.length){
+    const stub = document.createElement('div');
+    stub.className = 'muted tiny';
+    stub.textContent = 'Реликвии: нет';
+    bar.appendChild(stub);
+    return;
+  }
+  for(const r of relics){
+    const chip = document.createElement('div');
+    chip.className = 'relicChip';
+    chip.textContent = r.name;
+    chip.title = r.desc;
+    bar.appendChild(chip);
   }
 }
 
@@ -991,7 +1013,7 @@ function renderDeck(){
     return true;
   });
 
-  const rarityOrder = {common:0, uncommon:1, rare:2, legendary:3};
+  const rarityOrder = {common:0, uncommon:1, rare:2, legendary:3, curse:4};
   const sorters = {
     rarity:(a,b)=> (rarityOrder[a.rarity]-rarityOrder[b.rarity]) || a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
     type:(a,b)=> a.type.localeCompare(b.type) || (a.cost - b.cost) || a.name.localeCompare(b.name),
