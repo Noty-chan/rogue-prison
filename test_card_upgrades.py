@@ -23,6 +23,19 @@ class CardUpgradeDefTest(unittest.TestCase):
         self.assertEqual(view["cost"], upgraded_def["cost"])
         self.assertEqual(view["desc"], upgraded_def["desc"])
 
+    def test_all_upgrade_fields_applied(self):
+        for c in content.CARDS:
+            base = content.get_card_def(c["id"], upgraded=False)
+            upgraded = content.get_card_def(c["id"], upgraded=True)
+            if c.get("desc_up") is not None:
+                self.assertEqual(upgraded["desc"], c["desc_up"], c["id"])
+            if c.get("cost_up") is not None:
+                self.assertEqual(upgraded["cost"], c["cost_up"], c["id"])
+            if c.get("effects_up") is not None:
+                self.assertEqual(upgraded["effects"], c["effects_up"], c["id"])
+            # базовое описание не должно протекать после апгрейда
+            self.assertEqual(base["desc"], c["desc"])
+
     def test_sanitize_deck_view_shows_upgraded_stats(self):
         state = game.default_state()
         state["run"] = {

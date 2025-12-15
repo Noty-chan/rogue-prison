@@ -4,6 +4,7 @@
 from __future__ import annotations
 from typing import Dict, List, Any, Optional
 import random
+import copy
 
 RARITIES = ["common", "uncommon", "rare", "legendary"]
 CARD_TYPES = ["attack", "defense", "skill", "upgrade", "curse"]
@@ -589,11 +590,14 @@ def get_card_def(card_id: str, upgraded: bool=False) -> Dict[str, Any]:
     base_src = CARD_INDEX.get(card_id) or CURSE_INDEX.get(card_id)
     if not base_src:
         raise KeyError(card_id)
-    base = dict(base_src)
+    base = copy.deepcopy(base_src)
     if upgraded:
-        if base.get("desc_up"): base["desc"] = base["desc_up"]
-        if base.get("cost_up") is not None: base["cost"] = base["cost_up"]
-        if base.get("effects_up"): base["effects"] = base["effects_up"]
+        if base.get("desc_up") is not None:
+            base["desc"] = base["desc_up"]
+        if base.get("cost_up") is not None:
+            base["cost"] = base["cost_up"]
+        if base.get("effects_up") is not None:
+            base["effects"] = base["effects_up"]
         base["upgraded"] = True
     else:
         base["upgraded"] = False
