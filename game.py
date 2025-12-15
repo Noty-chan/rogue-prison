@@ -1623,13 +1623,26 @@ def enemy_turn(state: Dict[str, Any]) -> None:
         else:
             log(combat, f"{e['name']} делает что-то странное.")
 
-        # dead check
+        # dead check на игроке
         if p["hp"] <= 0:
             lose_combat(state)
             return
 
+        # если враг умер от шипов/дотов в своём действии — пропустим burn/intents
+        if e["hp"] <= 0:
+            if all(en["hp"] <= 0 for en in enemies):
+                win_combat(state)
+                return
+            continue
+
         # burn tick на враге (конец его хода)
         tick_burn(combat, e, owner="enemy")
+
+        if e["hp"] <= 0:
+            if all(en["hp"] <= 0 for en in enemies):
+                win_combat(state)
+                return
+            continue
 
         # intent на следующий ход
         choose_intent(e, rng)
