@@ -55,14 +55,14 @@ def _c(
     }
 
 # --------------------------
-# 60 карт: 24/18/12/6
+# 70 карт: 28/21/14/7
 # Минимум 12 билд-тегов:
 # charge, poison, burn, bleed, control, stun, freeze, burst, discard, crit, block, mana, hex, heal
 # --------------------------
 
 CARDS: List[Dict[str, Any]] = []
 
-# --- COMMON (24) ---
+# --- COMMON (28) ---
 CARDS += [
     _c("ARCANE_JAB", "Арканный тычок", "common", "attack", 1, "enemy",
        "Нанеси 6 урона. (Крит 15%)",
@@ -179,9 +179,25 @@ _c("PRISON_TATTOO", "Тюремная татуировка", "common", "upgrade"
        exhaust=True,
        desc_up="Изгнание. До конца боя: в начале твоего хода исцеляйся на 3.",
        effects_up=[{"op":"add_buff","buff":"regen_medium"}]),
+    _c("VENOM_DAGGER", "Ядовитый кинжал", "common", "attack", 1, "enemy",
+       "Нанеси 5 урона. Наложи 2 Яд.",
+       [{"op":"damage","amount":5},{"op":"apply","status":"poison","stacks":2,"to":"enemy"}],
+       tags=["poison","burst"]),
+    _c("GLIMMER_SHIELD", "Мерцающий щит", "common", "defense", 1, "self",
+       "Получишь 7 Блока. До конца этого хода отражаешь урон.",
+       [{"op":"block","amount":7},{"op":"add_buff","buff":"reflect_half_1turn"}],
+       tags=["block"]),
+    _c("SCRAP_TRADE", "Сделка за мусор", "common", "skill", 0, "none",
+       "Потеряй 2 HP. Возьми 2 карты.",
+       [{"op":"lose_hp","amount":2},{"op":"draw","n":2}],
+       tags=["discard","burst"]),
+    _c("CHAINS_REBOUND", "Отскок цепей", "common", "attack", 1, "enemy",
+       "Нанеси 6 урона. Если в руке есть карта со сбросом — получи 4 Блока.",
+       [{"op":"damage","amount":6},{"op":"if_hand_has_tag","tag":"discard","then":[{"op":"block","amount":4}]}],
+       tags=["discard","burst"]),
 ]
 
-# --- UNCOMMON (18) ---
+# --- UNCOMMON (21) ---
 CARDS += [
     _c("CHARGED_LANCE", "Заряжаемое копьё", "uncommon", "attack", 2, "enemy",
        "Нанеси 8 урона. Остаётся в руке и в конце хода получает +3 к урону.",
@@ -285,9 +301,21 @@ CARDS += [
        tags=["heal","block"],
        desc_up="11 Блока, исцеление 4, бонус Блок 4.",
        effects_up=[{"op":"block","amount":11},{"op":"heal","amount":4},{"op":"if_hand_has_tag","tag":"heal","then":[{"op":"block","amount":4}]}]),
+    _c("NEEDLE_RAIN", "Дождь игл", "uncommon", "skill", 1, "all_enemies",
+       "Нанеси 4 урона всем. Если враг уже отравлен или истекает кровью — урон +3.",
+       [{"op":"aoe_damage","amount":4,"bonus_if_has_any_status":["poison","bleed"],"bonus":3}],
+       tags=["poison","bleed","burst"]),
+    _c("MIRROR_STANCE", "Зеркальная стойка", "uncommon", "skill", 1, "self",
+       "Получишь 6 Блока. Следующая сыгранная карта вернётся в руку.",
+       [{"op":"block","amount":6},{"op":"add_buff","buff":"bounce_next"}],
+       tags=["block","discard"]),
+    _c("VENOMOUS_WAVE", "Ядовитая волна", "uncommon", "skill", 1, "all_enemies",
+       "Наложи 4 Яд всем врагам. Получи 4 Блока.",
+       [{"op":"apply","status":"poison","stacks":4,"to":"all_enemies"},{"op":"block","amount":4}],
+       tags=["poison","control"]),
 ]
 
-# --- RARE (12) ---
+# --- RARE (14) ---
 CARDS += [
     _c("ARCANE_BATTERY", "Арканная батарея", "rare", "upgrade", 2, "self",
        "Изгнание. До конца боя: +2 Макс.Маны и в начале хода +1 мана.",
@@ -360,9 +388,17 @@ CARDS += [
        tags=["heal","discard"],
        desc_up="Исцелись на 12. Возьми 3 карты, затем сбрось 1 карту.",
        effects_up=[{"op":"heal","amount":12},{"op":"draw","n":3},{"op":"discard_choose","n":1}]),
+    _c("MIRROR_REPRISAL", "Зеркальный отпор", "rare", "defense", 2, "self",
+       "Получишь 12 Блока. В этот ход отражаешь весь полученный урон.",
+       [{"op":"block","amount":12},{"op":"add_buff","buff":"reflect_full_1turn"}],
+       tags=["block","control"]),
+    _c("PLAGUE_SPRING", "Чумной источник", "rare", "skill", 2, "all_enemies",
+       "Наложи 5 Яд всем врагам. Исцелись на 2 за каждого врага.",
+       [{"op":"apply","status":"poison","stacks":5,"to":"all_enemies"},{"op":"heal_per_enemy","amount":2}],
+       tags=["poison","heal"]),
 ]
 
-# --- LEGENDARY (6) ---
+# --- LEGENDARY (7) ---
 CARDS += [
     _c("CRIT_OF_DAMNED", "Крит проклятых", "legendary", "upgrade", 1, "self",
        "Изгнание. До конца боя: +25% шанс крита. Криты наносят x3 урона.",
@@ -404,16 +440,23 @@ CARDS += [
        exhaust=True,
        desc_up="В начале хода исцеление 7 и 2 Ожога всем врагам.",
        effects_up=[{"op":"add_buff","buff":"phoenix_heart_plus"}]),
+    _c("VENOM_PRISM", "Ядовитая призма", "legendary", "upgrade", 2, "self",
+       "Изгнание. До конца боя: в конце хода накладывай 2 Яда всем врагам и Яд не уменьшается.",
+       [{"op":"add_buff","buff":"venom_rain"}],
+       tags=["poison"],
+       exhaust=True,
+       desc_up="Накладывай 3 Яда всем врагам. Яд не уменьшается.",
+       effects_up=[{"op":"add_buff","buff":"venom_rain_plus"}]),
 ]
 
 # Проверка количества по редкостям (на этапе импорта).
 _counts = {r:0 for r in RARITIES}
 for c in CARDS:
     _counts[c["rarity"]] += 1
-assert _counts["common"] == 24, f"common should be 24, got {_counts['common']}"
-assert _counts["uncommon"] == 18, f"uncommon should be 18, got {_counts['uncommon']}"
-assert _counts["rare"] == 12, f"rare should be 12, got {_counts['rare']}"
-assert _counts["legendary"] == 6, f"legendary should be 6, got {_counts['legendary']}"
+assert _counts["common"] == 28, f"common should be 28, got {_counts['common']}"
+assert _counts["uncommon"] == 21, f"uncommon should be 21, got {_counts['uncommon']}"
+assert _counts["rare"] == 14, f"rare should be 14, got {_counts['rare']}"
+assert _counts["legendary"] == 7, f"legendary should be 7, got {_counts['legendary']}"
 
 CARD_INDEX: Dict[str, Dict[str, Any]] = {c["id"]: c for c in CARDS}
 
@@ -457,6 +500,7 @@ BUFFS: Dict[str, Dict[str, Any]] = {
     "draw_on_discard": {"name":"Ночная смена", "desc":"Сброс: возьми 1 карту.", "hooks":["on_discard"]},
     "draw_block_on_discard": {"name":"Ночная смена+", "desc":"Сброс: возьми 1 и +1 Блок.", "hooks":["on_discard"]},
     "reflect_half_1turn": {"name":"Зеркальный барьер", "desc":"До конца хода: отражаешь 50% урона.", "hooks":["on_take_damage"]},
+    "reflect_full_1turn": {"name":"Зеркальный отпор", "desc":"До конца хода: отражаешь весь урон.", "hooks":["on_take_damage"]},
     "crit_godmode": {"name":"Крит проклятых", "desc":"+25% крит, крит x3.", "hooks":[]},
     "eclipse": {"name":"Тюремное затмение", "desc":"В конце твоего хода: всем врагам +2 яд, +2 ожог.", "hooks":["turn_end_player"]},
     "eclipse_plus": {"name":"Тюремное затмение+", "desc":"В конце твоего хода: всем врагам +3 яд, +3 ожог.", "hooks":["turn_end_player"]},
@@ -464,6 +508,8 @@ BUFFS: Dict[str, Dict[str, Any]] = {
     "regen_guard_plus": {"name":"Священный символ+", "desc":"В начале хода: лечишься на 5 и получаешь 3 Блока.", "hooks":["turn_start_player"]},
     "phoenix_heart": {"name":"Сердце феникса", "desc":"Начало хода: лечишься на 6 и накладываешь 1 Ожог всем врагам.", "hooks":["turn_start_player","turn_end_player"]},
     "phoenix_heart_plus": {"name":"Сердце феникса+", "desc":"Начало хода: лечишься на 7 и накладываешь 2 Ожога всем врагам.", "hooks":["turn_start_player","turn_end_player"]},
+    "venom_rain": {"name":"Ядовитая призма", "desc":"Конец хода: всем врагам +2 Яда. Яд не уменьшается.", "hooks":["turn_end_player","dot_tick_poison"]},
+    "venom_rain_plus": {"name":"Ядовитая призма+", "desc":"Конец хода: всем врагам +3 Яда. Яд не уменьшается.", "hooks":["turn_end_player","dot_tick_poison"]},
 }
 
 # --------------------------
@@ -615,6 +661,76 @@ EVENTS: List[Dict[str, Any]] = [
             {"id":"DIG", "label":"Порыться (получить 2 common карты)", "effect":{"op":"event_gain_card","rarity":"common","n":2}},
             {"id":"BURN", "label":"Сжечь улики (удалить 2 карты)", "effect":{"op":"event_remove_card","n":2}},
             {"id":"LEAVE", "label":"Уйти", "effect":{"op":"noop"}},
+        ],
+    },
+    {
+        "id": "EVENT_CAFETERIA",
+        "name": "Тюремная столовая",
+        "desc": "Баланда дымится, охрана наблюдает.",
+        "options": [
+            {"id":"SOUP", "label":"Выпить баланду (исцелиться 8)", "effect":{"op":"heal","amount":8}},
+            {"id":"COFFEE", "label":"Хапнуть кофе с гвоздями (+20 золота, -4 HP)", "effect":{"op":"combo","steps":[{"op":"lose_hp","amount":4},{"op":"gain_gold","amount":20}]}},
+            {"id":"LEAVE", "label":"Не рисковать желудком", "effect":{"op":"noop"}},
+        ],
+    },
+    {
+        "id": "EVENT_FORGE",
+        "name": "Плавильня",
+        "desc": "Закалённые цепи и угли, готовые к обмену на услугу.",
+        "options": [
+            {"id":"PAY", "label":"Заплатить 30 золота за улучшение", "effect":{"op":"combo","steps":[{"op":"gain_gold","amount":-30},{"op":"event_upgrade_card","n":1}]}},
+            {"id":"BLOOD", "label":"Кровью оплатить улучшение (-5 HP)", "effect":{"op":"combo","steps":[{"op":"lose_hp","amount":5},{"op":"event_upgrade_card","n":1}]}},
+            {"id":"LEAVE", "label":"Пройти мимо", "effect":{"op":"noop"}},
+        ],
+    },
+    {
+        "id": "EVENT_SMUGGLER",
+        "name": "Контрабандист",
+        "desc": "Тень в капюшоне шепчет цены.",
+        "options": [
+            {"id":"UNCOMMON", "label":"Купить необычную карту за 25 золота", "effect":{"op":"combo","steps":[{"op":"gain_gold","amount":-25},{"op":"event_gain_card","rarity":"uncommon","n":1}]}},
+            {"id":"RARE", "label":"Взять редкую карту за 50 золота и -5 HP", "effect":{"op":"combo","steps":[{"op":"gain_gold","amount":-50},{"op":"lose_hp","amount":5},{"op":"event_gain_card","rarity":"rare","n":1}]}},
+            {"id":"LEAVE", "label":"Отказаться", "effect":{"op":"noop"}},
+        ],
+    },
+    {
+        "id": "EVENT_SCARS",
+        "name": "Комната шрамов",
+        "desc": "На стенах отметки побегов и зарубки старых историй.",
+        "options": [
+            {"id":"PURGE", "label":"Сорвать старые цепи (удалить карту, -3 HP)", "effect":{"op":"combo","steps":[{"op":"lose_hp","amount":3},{"op":"event_remove_card","n":1}]}},
+            {"id":"MARK", "label":"Оставить метку (получить 1 common карту)", "effect":{"op":"event_gain_card","rarity":"common","n":1}},
+            {"id":"LEAVE", "label":"Ничего не трогать", "effect":{"op":"noop"}},
+        ],
+    },
+    {
+        "id": "EVENT_CACHE",
+        "name": "Тайник под плитой",
+        "desc": "Плита шатается, под ней что-то блестит.",
+        "options": [
+            {"id":"GRAB", "label":"Забрать всё (2 common карты)", "effect":{"op":"event_gain_card","rarity":"common","n":2}},
+            {"id":"RISK", "label":"Схватить сияющий кристалл (1 rare карта, -6 HP)", "effect":{"op":"combo","steps":[{"op":"lose_hp","amount":6},{"op":"event_gain_card","rarity":"rare","n":1}]}},
+            {"id":"LEAVE", "label":"Оставить тайник", "effect":{"op":"noop"}},
+        ],
+    },
+    {
+        "id": "EVENT_OATH",
+        "name": "Клятва заключённого",
+        "desc": "Старый арестант предлагает поделиться выучкой.",
+        "options": [
+            {"id":"PLEDGE", "label":"Принять наставление (+5 макс. HP)", "effect":{"op":"gain_max_hp","amount":5}},
+            {"id":"BRIBE", "label":"Подкупить его (получить 35 золота)", "effect":{"op":"gain_gold","amount":35}},
+            {"id":"LEAVE", "label":"Не ввязываться", "effect":{"op":"noop"}},
+        ],
+    },
+    {
+        "id": "EVENT_ALTAR",
+        "name": "Осколочный алтарь",
+        "desc": "Кровавые руны обещают силу за боль.",
+        "options": [
+            {"id":"BLESS", "label":"Принести жертву (-8 HP, получить легендарную карту)", "effect":{"op":"combo","steps":[{"op":"lose_hp","amount":8},{"op":"event_gain_card","rarity":"legendary","n":1}]}},
+            {"id":"PRAY", "label":"Попросить по-маленькому (получить uncommon карту)", "effect":{"op":"event_gain_card","rarity":"uncommon","n":1}},
+            {"id":"LEAVE", "label":"Отойти прочь", "effect":{"op":"noop"}},
         ],
     },
 ]
