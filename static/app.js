@@ -6,6 +6,27 @@ let STATE = null;
 let CONTENT = null; // /api/content
 let CARD_INDEX = new Map(); // id -> {base, up}
 let MAP_ZOOM = 1;
+let API_BASE = localStorage.getItem('mprl_api_base') || (window.__API_BASE__ || '');
+
+function normalizeBase(b){
+  if(!b) return '';
+  return b.replace(/\/$/, '');
+}
+
+function apiUrl(path){
+  const cleanPath = path.replace(/^\//,'');
+  const base = normalizeBase(API_BASE);
+  if(!base) return `${cleanPath}`;
+  return `${base}/${cleanPath}`;
+}
+
+function setApiBase(base){
+  API_BASE = normalizeBase(base || '');
+  localStorage.setItem('mprl_api_base', API_BASE);
+  const inp = $('#apiBaseInput');
+  if(inp) inp.value = API_BASE;
+  setApiStatus(null, API_BASE ? API_BASE : 'Текущий домен');
+}
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -21,47 +42,98 @@ function toast(msg){
   setTimeout(()=>{ show(t,false); }, 1800);
 }
 
+function setApiStatus(ok, hint){
+  const chip = $('#apiStatus');
+  const hintEl = $('#apiStatusHint');
+  if(!chip || !hintEl) return;
+  if(ok === true){
+    chip.textContent = 'Связь: онлайн';
+    chip.classList.remove('danger');
+    hintEl.textContent = hint || (normalizeBase(API_BASE) ? normalizeBase(API_BASE) : 'Текущий домен');
+  }else if(ok === false){
+    chip.textContent = 'Связь: оффлайн';
+    chip.classList.add('danger');
+    hintEl.textContent = hint || 'Нет ответа от API';
+  }else{
+    chip.textContent = 'Связь: авто';
+    chip.classList.remove('danger');
+    hintEl.textContent = hint || 'Работаем на том же домене.';
+  }
+}
+
+function toggleOfflineBanner(showBanner){
+  show($('#offlineBanner'), !!showBanner);
+}
+
 async function api(path, body){
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(body || {})
-  });
-  return await res.json();
+  const url = apiUrl(path);
+  try{
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body || {})
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    setApiStatus(true);
+    toggleOfflineBanner(false);
+    return data;
+  }catch(err){
+    console.error('API error', err);
+    setApiStatus(false, err?.message || 'Неизвестная ошибка');
+    toggleOfflineBanner(true);
+    throw err;
+  }
 }
 
 async function apiGet(path){
-  const res = await fetch(path);
+  const url = apiUrl(path);
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
 
 async function bootstrap(){
   const saved = localStorage.getItem('mprl_sid');
-  const data = await api('/api/bootstrap', {sid: saved || null});
-  SID = data.sid;
-  localStorage.setItem('mprl_sid', SID);
-  STATE = data.state;
-  renderAll();
-  if(STATE?.run){
-    await dispatch({type:'CONTINUE'});
-  }
-  // подгрузим контент для кодекса/наследия
   try{
-    CONTENT = await apiGet('/api/content');
-    CARD_INDEX = new Map();
-    for(const item of CONTENT.cards){
-      CARD_INDEX.set(item.base.id, item);
+    const data = await api('api/bootstrap', {sid: saved || null});
+    SID = data.sid;
+    localStorage.setItem('mprl_sid', SID);
+    STATE = data.state;
+    renderAll();
+    if(STATE?.run){
+      await dispatch({type:'CONTINUE'});
     }
-  }catch(e){
-    // ok
+    // подгрузим контент для кодекса/наследия
+    try{
+      CONTENT = await apiGet('api/content');
+      CARD_INDEX = new Map();
+      for(const item of CONTENT.cards){
+        CARD_INDEX.set(item.base.id, item);
+      }
+    }catch(e){
+      // ok
+    }
+  }catch(err){
+    toast('Нет связи с сервером. Проверь API.');
+    toggleOfflineBanner(true);
   }
 }
 
 async function dispatch(action){
-  const data = await api('/api/action', {sid: SID, action});
-  STATE = data.state;
-  renderAll();
-  if(STATE?.ui?.toast) toast(STATE.ui.toast);
+  if(!SID){
+    toast('Нет SID — перезагрузи страницу.');
+    return;
+  }
+  try{
+    const data = await api('api/action', {sid: SID, action});
+    STATE = data.state;
+    renderAll();
+    if(STATE?.ui?.toast) toast(STATE.ui.toast);
+  }catch(err){
+    toast('Связь потеряна. Попробуй снова.');
+    throw err;
+  }
 }
 
 // --- helpers ---
@@ -1040,6 +1112,7 @@ function escapeHtml(s){
 
 // --- Wire UI buttons ---
 function wire(){
+  setApiBase(API_BASE);
   // Menu
   $('#btnMenu').addEventListener('click', ()=> show($('#overlayMenu'), true));
   $('#btnMenuCodex').addEventListener('click', openCodex);
@@ -1053,11 +1126,14 @@ function wire(){
   $('#btnSaveSettings').addEventListener('click', ()=>{
     const v = parseInt($('#difficultyRange').value,10);
     dispatch({type:'SET_DIFFICULTY', difficulty: v});
+    setApiBase($('#apiBaseInput').value.trim());
     show($('#overlaySettings'), false);
   });
   $('#difficultyRange').addEventListener('input', ()=>{
     $('#difficultyValue').textContent = $('#difficultyRange').value;
   });
+  $('#btnRetryBootstrap').addEventListener('click', ()=> bootstrap());
+  $('#btnOpenSettings').addEventListener('click', ()=> show($('#overlaySettings'), true));
 
   // Codex
   $('#btnCodex').addEventListener('click', openCodex);
