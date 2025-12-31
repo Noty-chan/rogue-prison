@@ -194,6 +194,15 @@ body:before{
 .row.wrap{flex-wrap:wrap}
 .rowEnd{display:flex; gap:10px; justify-content:flex-end; align-items:center}
 .spacer{flex:1}
+.apiQuickRow{margin-top:6px}
+.apiHostInfo{margin:6px 0 4px}
+.apiHostChip{
+  padding:8px 10px;
+  border:1px dashed rgba(139,92,246,.45);
+  border-radius:999px;
+  color:var(--muted);
+  font-size:15px;
+}
 
 .screen{
   padding: 18px 16px 24px;

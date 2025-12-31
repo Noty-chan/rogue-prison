@@ -54,6 +54,7 @@
       </div>
       <div class="row wrap">
         <button class="btn" id="btnRetryBootstrap">Повторить</button>
+        <button class="btn" id="btnUseReserve">Резервный API</button>
         <button class="btn btnGhost" id="btnOpenSettings">Открыть настройки</button>
       </div>
     </div>
@@ -89,6 +90,20 @@
           <span>База API (для GitHub Pages / внешнего домена)</span>
           <input id="apiBaseInput" class="input" placeholder="напр. https://example.com/rogue"/>
           <span class="tiny muted">Оставь пустым, чтобы использовать тот же домен, что и страница.</span>
+        </label>
+        <div class="row wrap apiQuickRow">
+          <button class="btn btnGhost" id="btnApiAuto">Текущий домен</button>
+          <button class="btn btnGhost" id="btnApiLocal">http://127.0.0.1:5173</button>
+          <button class="btn btnGhost" id="btnApiLocalhost">http://localhost:5173</button>
+        </div>
+        <div class="apiHostInfo">
+          <div class="tiny muted">Локальная сеть (если сервер запущен с MPRL_HOST=0.0.0.0):</div>
+          <div class="row wrap" id="apiHostList"></div>
+        </div>
+        <label class="row wrap">
+          <span>Резервная база API</span>
+          <input id="apiBaseAltInput" class="input" placeholder="напр. http://192.168.0.10:5173"/>
+          <span class="tiny muted">Используется для автопереключения, если основной адрес не отвечает.</span>
         </label>
         <div class="rowEnd">
           <button class="btn btnPrimary" id="btnSaveSettings">Сохранить</button>
