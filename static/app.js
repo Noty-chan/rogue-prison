@@ -7,17 +7,23 @@ let CONTENT = null; // /api/content
 let CARD_INDEX = new Map(); // id -> {base, up}
 let MAP_ZOOM = 1;
 let API_BASE = localStorage.getItem('mprl_api_base') || (window.__API_BASE__ || '');
+let API_BASE_ALT = localStorage.getItem('mprl_api_base_alt') || '';
+let HOSTINFO = null;
 
 function normalizeBase(b){
   if(!b) return '';
   return b.replace(/\/$/, '');
 }
 
-function apiUrl(path){
+function apiUrlWithBase(path, baseOverride){
   const cleanPath = path.replace(/^\//,'');
-  const base = normalizeBase(API_BASE);
+  const base = normalizeBase(baseOverride ?? API_BASE);
   if(!base) return `${cleanPath}`;
   return `${base}/${cleanPath}`;
+}
+
+function apiUrl(path){
+  return apiUrlWithBase(path, API_BASE);
 }
 
 function setApiBase(base){
@@ -26,6 +32,22 @@ function setApiBase(base){
   const inp = $('#apiBaseInput');
   if(inp) inp.value = API_BASE;
   setApiStatus(null, API_BASE ? API_BASE : 'Текущий домен');
+}
+
+function setApiAltBase(base){
+  API_BASE_ALT = normalizeBase(base || '');
+  localStorage.setItem('mprl_api_base_alt', API_BASE_ALT);
+  const inp = $('#apiBaseAltInput');
+  if(inp) inp.value = API_BASE_ALT;
+  updateReserveControls();
+}
+
+function updateReserveControls(){
+  const btn = $('#btnUseReserve');
+  if(btn){
+    btn.disabled = !API_BASE_ALT;
+    btn.classList.toggle('hidden', !API_BASE_ALT);
+  }
 }
 
 const $ = (sel) => document.querySelector(sel);
@@ -66,20 +88,36 @@ function toggleOfflineBanner(showBanner){
 }
 
 async function api(path, body){
-  const url = apiUrl(path);
-  try{
+  const attempt = async (baseOverride) => {
+    const url = apiUrlWithBase(path, baseOverride);
     const res = await fetch(url, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body || {})
     });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    return await res.json();
+  };
+  try{
+    const data = await attempt();
     setApiStatus(true);
     toggleOfflineBanner(false);
     return data;
   }catch(err){
     console.error('API error', err);
+    const alt = normalizeBase(API_BASE_ALT);
+    if(alt && alt !== normalizeBase(API_BASE)){
+      try{
+        const data = await attempt(alt);
+        setApiBase(alt);
+        setApiStatus(true, `Резервный API: ${alt}`);
+        toggleOfflineBanner(false);
+        toast('Переключено на резервный API.');
+        return data;
+      }catch(err2){
+        console.error('Reserve API error', err2);
+      }
+    }
     setApiStatus(false, err?.message || 'Неизвестная ошибка');
     toggleOfflineBanner(true);
     throw err;
@@ -87,10 +125,30 @@ async function api(path, body){
 }
 
 async function apiGet(path){
-  const url = apiUrl(path);
-  const res = await fetch(url);
-  if(!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json();
+  const attempt = async (baseOverride) => {
+    const url = apiUrlWithBase(path, baseOverride);
+    const res = await fetch(url);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  };
+  try{
+    return await attempt();
+  }catch(err){
+    const alt = normalizeBase(API_BASE_ALT);
+    if(alt && alt !== normalizeBase(API_BASE)){
+      try{
+        const data = await attempt(alt);
+        setApiBase(alt);
+        setApiStatus(true, `Резервный API: ${alt}`);
+        toggleOfflineBanner(false);
+        toast('Переключено на резервный API.');
+        return data;
+      }catch(err2){
+        console.error('Reserve API error', err2);
+      }
+    }
+    throw err;
+  }
 }
 
 async function bootstrap(){
@@ -134,6 +192,44 @@ async function dispatch(action){
     toast('Связь потеряна. Попробуй снова.');
     throw err;
   }
+}
+
+function renderHostInfo(hostinfo){
+  const list = $('#apiHostList');
+  if(!list) return;
+  list.innerHTML = '';
+  if(!hostinfo || !hostinfo.ips || hostinfo.ips.length === 0){
+    const chip = document.createElement('div');
+    chip.className = 'apiHostChip';
+    chip.textContent = 'Адреса не найдены';
+    list.appendChild(chip);
+    return;
+  }
+  for(const ip of hostinfo.ips){
+    const btn = document.createElement('button');
+    btn.className = 'btn btnGhost';
+    btn.textContent = `http://${ip}:${hostinfo.port}`;
+    btn.addEventListener('click', ()=> setApiBase(`http://${ip}:${hostinfo.port}`));
+    list.appendChild(btn);
+  }
+}
+
+async function refreshHostInfo(){
+  try{
+    HOSTINFO = await apiGet('api/hostinfo');
+    renderHostInfo(HOSTINFO);
+  }catch(err){
+    renderHostInfo(null);
+  }
+}
+
+function openSettings(){
+  show($('#overlaySettings'), true);
+  const inp = $('#apiBaseInput');
+  if(inp) inp.value = normalizeBase(API_BASE);
+  const altInp = $('#apiBaseAltInput');
+  if(altInp) altInp.value = normalizeBase(API_BASE_ALT);
+  refreshHostInfo();
 }
 
 // --- helpers ---
@@ -1119,27 +1215,37 @@ function escapeHtml(s){
 // --- Wire UI buttons ---
 function wire(){
   setApiBase(API_BASE);
+  setApiAltBase(API_BASE_ALT);
   // Menu
   $('#btnMenu').addEventListener('click', ()=> show($('#overlayMenu'), true));
   $('#btnMenuCodex').addEventListener('click', openCodex);
-  $('#btnMenuSettings').addEventListener('click', ()=> show($('#overlaySettings'), true));
+  $('#btnMenuSettings').addEventListener('click', openSettings);
   $('#btnContinue').addEventListener('click', ()=> { show($('#overlayMenu'), false); dispatch({type:'CONTINUE'}); });
   $('#btnNewRun').addEventListener('click', ()=> dispatch({type:'NEW_RUN'}));
 
   // Settings
-  $('#btnSettings').addEventListener('click', ()=> show($('#overlaySettings'), true));
+  $('#btnSettings').addEventListener('click', openSettings);
   $('#btnCloseSettings').addEventListener('click', ()=> show($('#overlaySettings'), false));
   $('#btnSaveSettings').addEventListener('click', ()=>{
     const v = parseInt($('#difficultyRange').value,10);
     dispatch({type:'SET_DIFFICULTY', difficulty: v});
     setApiBase($('#apiBaseInput').value.trim());
+    setApiAltBase($('#apiBaseAltInput').value.trim());
     show($('#overlaySettings'), false);
   });
   $('#difficultyRange').addEventListener('input', ()=>{
     $('#difficultyValue').textContent = $('#difficultyRange').value;
   });
   $('#btnRetryBootstrap').addEventListener('click', ()=> bootstrap());
-  $('#btnOpenSettings').addEventListener('click', ()=> show($('#overlaySettings'), true));
+  $('#btnOpenSettings').addEventListener('click', openSettings);
+  $('#btnUseReserve').addEventListener('click', ()=>{
+    if(!API_BASE_ALT) return;
+    setApiBase(API_BASE_ALT);
+    bootstrap();
+  });
+  $('#btnApiAuto').addEventListener('click', ()=> setApiBase(''));
+  $('#btnApiLocal').addEventListener('click', ()=> setApiBase('http://127.0.0.1:5173'));
+  $('#btnApiLocalhost').addEventListener('click', ()=> setApiBase('http://localhost:5173'));
 
   // Codex
   $('#btnCodex').addEventListener('click', openCodex);

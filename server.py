@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 from typing import Dict, Any, Optional
-import os, json, tempfile
+import os, json, tempfile, socket
 
 from flask import Flask, request, send_from_directory, jsonify
 
@@ -16,6 +16,9 @@ SAVE_DIR = os.path.join(APP_DIR, "saves")
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
+
+DEFAULT_HOST = os.environ.get("MPRL_HOST", "127.0.0.1")
+DEFAULT_PORT = int(os.environ.get("MPRL_PORT", "5173"))
 
 def save_path(sid: str) -> str:
     safe = "".join(ch for ch in sid if ch.isalnum() or ch in "_-")
@@ -120,10 +123,41 @@ def api_content():
         "relics": content.RELICS,
     })
 
+def _local_ipv4s() -> list[str]:
+    ips = set()
+    try:
+        host = socket.gethostname()
+        for res in socket.getaddrinfo(host, None):
+            ip = res[4][0]
+            if ":" in ip:
+                continue
+            if ip.startswith("127."):
+                continue
+            ips.add(ip)
+    except Exception:
+        pass
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            ip = sock.getsockname()[0]
+            if not ip.startswith("127."):
+                ips.add(ip)
+    except Exception:
+        pass
+    return sorted(ips)
+
+@app.get("/api/hostinfo")
+def api_hostinfo():
+    return jsonify({
+        "host": DEFAULT_HOST,
+        "port": DEFAULT_PORT,
+        "ips": _local_ipv4s(),
+    })
+
 @app.get("/api/ping")
 def ping():
     return jsonify({"ok": True})
 
 if __name__ == "__main__":
     # host=127.0.0.1 — только локально
-    app.run(host="127.0.0.1", port=5173, debug=True)
+    app.run(host=DEFAULT_HOST, port=DEFAULT_PORT, debug=True)
